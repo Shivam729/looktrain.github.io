@@ -246,6 +246,21 @@
   }
   .browse tr:hover td{ background:#0f1516; }
   .browse .ec{ color:var(--green); font-weight:700; }
+  .faultlink{
+    display:block;
+    margin-top:22px;
+    padding:14px 16px;
+    border:1px solid var(--line);
+    background:var(--panel);
+    color:var(--amber);
+    text-decoration:none;
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:1px;
+    text-transform:uppercase;
+  }
+  .faultlink span{ color:var(--grey); font-weight:400; text-transform:none; letter-spacing:0; font-size:12px; }
+  .faultlink:hover{ border-color:var(--amber-dim); }
 </style>
 </head>
 <body>
@@ -280,6 +295,8 @@
   </details>
 
   <div class="footnote" id="footnote"></div>
+
+  <a class="faultlink" href="faults.html">Fault Log &rarr; <span>my notes on major faults &amp; known fixes</span></a>
 
 </div>
 
@@ -399,6 +416,10 @@ input.addEventListener('input', () => {
 
 refreshHeader();
 refreshBrowseTable();
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>

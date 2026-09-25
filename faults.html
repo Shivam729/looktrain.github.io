@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EWL Fault Log</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0b0f10">
+<style>
+  :root{
+    --bg: #0b0f10;
+    --panel: #12181a;
+    --amber: #ffb100;
+    --amber-dim: #7a5700;
+    --green: #3ddc84;
+    --green-dim: #164a2e;
+    --red: #ff5c5c;
+    --grey: #7d8a8c;
+    --line: #263133;
+    --text: #d9c98a;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--amber);
+    font-family: 'Courier New', 'JetBrains Mono', monospace;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding:32px 16px 60px;
+  }
+  .board{ width:100%; max-width:720px; }
+  .board-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:12px;
+    border-bottom:2px solid var(--line);
+    padding-bottom:10px;
+    margin-bottom:16px;
+    letter-spacing:1px;
+  }
+  .board-head h1{
+    font-size:15px;
+    margin:0;
+    text-transform:uppercase;
+    font-weight:700;
+  }
+  .board-head a{ color:var(--grey); font-size:11px; text-decoration:none; }
+  .board-head a:hover{ color:var(--amber); }
+
+  .syncbar{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:11px;
+    color:var(--grey);
+    margin-bottom:14px;
+  }
+  .dot{ width:8px; height:8px; border-radius:50%; background:var(--grey); flex:none; }
+  .dot.ok{ background:var(--green); }
+  .dot.warn{ background:var(--amber); }
+  .dot.err{ background:var(--red); }
+  .syncbar button{ margin-left:auto; }
+
+  button{
+    background:var(--amber);
+    color:#1a1200;
+    border:none;
+    font-family:inherit;
+    font-weight:700;
+    font-size:13px;
+    letter-spacing:1px;
+    padding:10px 16px;
+    border-radius:2px;
+    cursor:pointer;
+    text-transform:uppercase;
+  }
+  button:hover{ background:#ffc733; }
+  button.ghost{
+    background:var(--panel);
+    color:var(--grey);
+    border:1px solid var(--line);
+  }
+  button.ghost:hover{ color:var(--amber); border-color:var(--amber-dim); }
+  button.small{ font-size:10px; padding:6px 10px; }
+  button.danger{ background:var(--panel); color:var(--red); border:1px solid #5a2323; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{
+    outline:2px solid var(--green); outline-offset:2px;
+  }
+
+  .toolbar{ display:flex; gap:8px; margin-bottom:10px; }
+  .toolbar input{ flex:1; min-width:0; }
+
+  input, select, textarea{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--amber);
+    font-family:inherit;
+    font-size:16px;
+    padding:10px 12px;
+    border-radius:2px;
+    width:100%;
+  }
+  input::placeholder, textarea::placeholder{ color:#4a4a3a; }
+  input:focus, select:focus, textarea:focus{ border-color:var(--amber-dim); outline:none; }
+  textarea{ min-height:84px; resize:vertical; line-height:1.4; }
+
+  .chips{ display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+  .chip{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--grey);
+    font-size:11px;
+    padding:6px 12px;
+    font-weight:400;
+  }
+  .chip:hover{ background:var(--panel); color:var(--amber); }
+  .chip.active{ color:var(--amber); border-color:var(--amber-dim); background:#1a1400; }
+  .count{ margin-left:auto; align-self:center; font-size:11px; color:var(--grey); }
+
+  .card{
+    border:1px solid var(--line);
+    background:var(--panel);
+    margin-bottom:8px;
+    border-radius:2px;
+  }
+  .card-head{
+    display:block;
+    width:100%;
+    text-align:left;
+    background:none;
+    color:inherit;
+    text-transform:none;
+    letter-spacing:0;
+    font-weight:400;
+    padding:12px 14px;
+  }
+  .card-head:hover{ background:#161e20; }
+  .card-title{ color:var(--amber); font-size:15px; font-weight:700; margin-bottom:6px; }
+  .meta{ display:flex; flex-wrap:wrap; gap:6px 12px; font-size:11px; color:var(--grey); }
+  .badge{
+    font-size:9px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    padding:2px 6px;
+    border:1px solid var(--line);
+    border-radius:2px;
+  }
+  .badge.major{ color:var(--red); border-color:#5a2323; }
+  .badge.known{ color:var(--green); border-color:var(--green-dim); }
+  .badge.pending{ color:var(--amber); border-color:var(--amber-dim); }
+  .tcms-snip{ color:var(--text); font-size:12px; margin-top:6px; }
+
+  .card-body{ border-top:1px solid var(--line); padding:12px 14px 14px; display:none; }
+  .card.open .card-body{ display:block; }
+  .field{ margin-bottom:12px; }
+  .field-label{ font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--grey); margin-bottom:4px; }
+  .field-value{ color:var(--text); font-size:14px; line-height:1.45; white-space:pre-wrap; word-break:break-word; }
+  ol.steps{ margin:0; padding-left:22px; color:var(--text); font-size:14px; line-height:1.5; }
+  ol.steps li{ margin-bottom:4px; }
+  .card-actions{ display:flex; gap:8px; margin-top:6px; }
+
+  .empty{
+    border:1px dashed var(--line);
+    color:var(--grey);
+    padding:28px 18px;
+    font-size:13px;
+    line-height:1.5;
+    text-align:center;
+  }
+
+  /* Entry form */
+  #editor{ display:none; }
+  body.editing #editor{ display:block; }
+  body.editing #listView{ display:none; }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .full{ grid-column:1 / -1; }
+  label{ display:block; }
+  label > span{
+    display:block;
+    font-size:10px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:var(--grey);
+    margin-bottom:4px;
+  }
+  label > small{ display:block; color:#556062; font-size:10px; margin-top:3px; }
+  .typepick{ display:flex; gap:8px; }
+  .typepick label{
+    flex:1;
+    border:1px solid var(--line);
+    background:var(--panel);
+    padding:10px 12px;
+    cursor:pointer;
+    font-size:12px;
+    color:var(--grey);
+  }
+  .typepick label b{ display:block; font-size:13px; margin-bottom:2px; }
+  .typepick label{ position:relative; }
+  .typepick input{ position:absolute; opacity:0; width:1px; height:1px; margin:0; }
+  .typepick label:focus-within{ outline:2px solid var(--green); outline-offset:2px; }
+  .typepick label:has(input:checked){ border-color:var(--amber-dim); background:#1a1400; color:var(--amber); }
+  .form-actions{ display:flex; gap:8px; margin-top:16px; }
+  .form-actions .spacer{ flex:1; }
+
+  details.settings{ margin-top:28px; border-top:1px solid var(--line); padding-top:14px; }
+  details.settings summary{ cursor:pointer; color:var(--grey); font-size:12px; letter-spacing:1px; text-transform:uppercase; }
+  details.settings summary:hover{ color:var(--amber); }
+  .settings-body{ padding-top:14px; display:grid; gap:12px; }
+  .settings-body p{ margin:0; font-size:12px; color:var(--grey); line-height:1.5; }
+  .settings-body a{ color:var(--amber); }
+  .row-btns{ display:flex; gap:8px; flex-wrap:wrap; }
+
+  .toast{
+    position:fixed;
+    left:50%;
+    bottom:20px;
+    transform:translateX(-50%);
+    background:#1a1400;
+    border:1px solid var(--amber-dim);
+    color:var(--amber);
+    padding:10px 16px;
+    font-size:12px;
+    border-radius:2px;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .2s;
+    max-width:calc(100% - 32px);
+  }
+  .toast.show{ opacity:1; }
+
+  @media (max-width:520px){
+    .grid{ grid-template-columns:1fr; }
+    .typepick{ flex-direction:column; }
+  }
+</style>
+</head>
+<body>
+<div class="board">
+
+  <div class="board-head">
+    <h1>EWL Fault Log</h1>
+    <a href="index.html">&larr; Depot lookup</a>
+  </div>
+
+  <div class="syncbar">
+    <span class="dot" id="syncDot"></span>
+    <span id="syncText">Not synced</span>
+    <button type="button" class="ghost small" id="syncBtn">Sync now</button>
+  </div>
+
+  <section id="listView">
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Search train, TCMS error, breaker, part&hellip;" autocomplete="off">
+      <button type="button" id="newBtn">+ New</button>
+    </div>
+    <div class="chips" id="chips">
+      <button type="button" class="chip active" data-filter="all">All</button>
+      <button type="button" class="chip" data-filter="major">Major events</button>
+      <button type="button" class="chip" data-filter="known">Known fixes</button>
+      <span class="count" id="count"></span>
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <section id="editor">
+    <form id="entryForm" autocomplete="off">
+      <div class="grid">
+        <div class="full typepick">
+          <label><input type="radio" name="type" value="major" checked><b>Major event</b>A real incident worth a full write-up</label>
+          <label><input type="radio" name="type" value="known"><b>Known fix</b>Simple fault &mdash; record the steps once</label>
+        </div>
+        <label class="full"><span>Title *</span>
+          <input name="title" required placeholder="e.g. Car 3 door fails to close, TCMS door fault">
+        </label>
+        <label><span>Date</span>
+          <input type="date" name="date">
+        </label>
+        <label><span>Train no.</span>
+          <input name="train" inputmode="numeric" placeholder="e.g. 305">
+        </label>
+        <label class="full"><span>System</span>
+          <input name="system" list="systems" placeholder="Doors, Brakes, Propulsion&hellip;">
+        </label>
+        <label class="full"><span>TCMS error shown</span>
+          <textarea name="tcms" rows="2" placeholder="Exact code / message on the TCMS screen"></textarea>
+        </label>
+        <label class="full"><span>Breakers tripped</span>
+          <textarea name="breakers" rows="2" placeholder="Breaker IDs / names and where they are"></textarea>
+        </label>
+        <label class="full"><span>Components changed</span>
+          <textarea name="components" rows="2" placeholder="Part, location, part no."></textarea>
+        </label>
+        <label class="full"><span>What happened</span>
+          <textarea name="happened" placeholder="Symptoms, when it happened, what you found"></textarea>
+        </label>
+        <label class="full"><span>Steps to fix</span>
+          <textarea name="steps" rows="6" placeholder="One step per line&#10;Check TCMS fault log&#10;Reset breaker ...&#10;..."></textarea>
+          <small>One step per line &mdash; shown as a numbered list.</small>
+        </label>
+        <label class="full"><span>Notes / lessons</span>
+          <textarea name="notes" rows="3" placeholder="What to try first next time, gotchas, who to call"></textarea>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button type="submit">Save</button>
+        <button type="button" class="ghost" id="cancelBtn">Cancel</button>
+        <span class="spacer"></span>
+        <button type="button" class="danger" id="deleteBtn">Delete</button>
+      </div>
+    </form>
+  </section>
+
+  <datalist id="systems">
+    <option value="Doors"><option value="Brakes"><option value="Propulsion / Traction">
+    <option value="Auxiliary power (APS)"><option value="Battery / LV"><option value="HVAC">
+    <option value="Lighting"><option value="TCMS / Network"><option value="Signalling / ATC">
+    <option value="Current collection"><option value="Couplers"><option value="PIS / PA / Comms">
+    <option value="Bogie / Running gear"><option value="Cab / Driver controls"><option value="Other">
+  </datalist>
+
+  <details class="settings" id="settings">
+    <summary>Sync &amp; backup settings</summary>
+    <div class="settings-body">
+      <p>Entries are saved on this device first, then copied to your private Google Sheet whenever you're online. Set this up once on each device (phone, work laptop). Setup guide: <a href="https://github.com/Shivam729/looktrain.github.io/blob/main/fault-log/SETUP.md" target="_blank" rel="noopener">fault-log/SETUP.md</a>.</p>
+      <label><span>Google Apps Script web app URL</span>
+        <input id="setUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+      </label>
+      <label><span>Passphrase</span>
+        <input id="setKey" type="password" placeholder="Same as SECRET in your script">
+      </label>
+      <div class="row-btns">
+        <button type="button" id="saveSettings">Save &amp; sync</button>
+      </div>
+      <p>Backup file &mdash; works without Google too. Import merges with what's already here.</p>
+      <div class="row-btns">
+        <button type="button" class="ghost" id="exportBtn">Export backup</button>
+        <button type="button" class="ghost" id="importBtn">Import backup</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+    </div>
+  </details>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STORE_KEY = 'faultlog.entries.v1';
+const SETTINGS_KEY = 'faultlog.settings.v1';
+const FIELDS = ['type','date','train','title','system','tcms','breakers','components','happened','steps','notes'];
+
+// ---------- storage ----------
+function load(key, fallback){
+  try{ const v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; }
+  catch(e){ return fallback; }
+}
+function persist(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(entries)); }
+  catch(e){ toast('Could not save on this device — export a backup'); }
+}
+let entries = load(STORE_KEY, []);
+let settings = load(SETTINGS_KEY, {});
+
+function newId(){
+  if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+function byId(id){ return entries.find(e => e.id === id); }
+function live(){ return entries.filter(e => !e.deleted); }
+
+// Newest edit wins; an unsynced local edit is only replaced by something newer.
+function mergeIn(list){
+  let changed = 0;
+  (list || []).forEach(s => {
+    if(!s || !s.id) return;
+    s.updatedAt = Number(s.updatedAt) || 0;
+    const l = byId(s.id);
+    if(!l){ entries.push(Object.assign({}, s, {dirty:false})); changed++; }
+    else if(s.updatedAt > l.updatedAt || (!l.dirty && s.updatedAt === l.updatedAt && JSON.stringify(strip(s)) !== JSON.stringify(strip(l)))){
+      Object.assign(l, s, {dirty:false}); changed++;
+    }
+  });
+  return changed;
+}
+function strip(e){
+  const o = {id:e.id, updatedAt:e.updatedAt, createdAt:e.createdAt, deleted:!!e.deleted};
+  FIELDS.forEach(f => o[f] = e[f] || '');
+  return o;
+}
+
+// ---------- sync ----------
+const syncDot = document.getElementById('syncDot');
+const syncText = document.getElementById('syncText');
+let syncing = false;
+
+function setStatus(kind, text){
+  syncDot.className = 'dot ' + (kind || '');
+  syncText.textContent = text;
+}
+function pendingCount(){ return entries.filter(e => e.dirty).length; }
+function idleStatus(){
+  const n = pendingCount();
+  if(!settings.url){ setStatus('warn', n ? `Saved on this device only (${n}) · sync not set up` : 'Sync not set up — see settings below'); return; }
+  if(!navigator.onLine){ setStatus('warn', n ? `Offline · ${n} waiting to sync` : 'Offline'); return; }
+  if(n){ setStatus('warn', `${n} waiting to sync`); return; }
+  const t = settings.lastSync ? new Date(settings.lastSync).toLocaleString([], {dateStyle:'medium', timeStyle:'short'}) : 'never';
+  setStatus('ok', `Synced · ${t}`);
+}
+
+async function sync(manual){
+  if(syncing) return;
+  if(!settings.url || !settings.key){ idleStatus(); if(manual) document.getElementById('settings').open = true; return; }
+  if(!navigator.onLine){ idleStatus(); return; }
+  syncing = true;
+  setStatus('', 'Syncing…');
+  const sent = entries.filter(e => e.dirty).map(strip);
+  try{
+    // text/plain body keeps this a "simple" request so Apps Script accepts it cross-origin.
+    const res = await fetch(settings.url, {method:'POST', body:JSON.stringify({key:settings.key, entries:sent})});
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Sync failed');
+    sent.forEach(s => { const l = byId(s.id); if(l && l.updatedAt === s.updatedAt) l.dirty = false; });
+    const changed = mergeIn(data.entries);
+    persist();
+    settings.lastSync = Date.now();
+    saveSettings();
+    render();
+    idleStatus();
+    if(manual) toast(changed ? `Synced · ${changed} updated from other devices` : 'Synced');
+  }catch(err){
+    setStatus('err', 'Sync failed: ' + (err.message || 'network error') + ' — saved on this device');
+  }finally{
+    syncing = false;
+  }
+}
+function saveSettings(){
+  try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }catch(e){}
+}
+
+// ---------- list ----------
+const listEl = document.getElementById('list');
+const searchEl = document.getElementById('search');
+const countEl = document.getElementById('count');
+let filter = 'all';
+const openIds = new Set();
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDate(d){
+  if(!d) return '';
+  const dt = new Date(d + 'T00:00:00');
+  return isNaN(dt) ? d : dt.toLocaleDateString([], {day:'numeric', month:'short', year:'numeric'});
+}
+function field(label, value){
+  return value ? `<div class="field"><div class="field-label">${label}</div><div class="field-value">${esc(value)}</div></div>` : '';
+}
+function stepsHtml(steps){
+  const lines = String(steps || '').split('\n').map(s => s.replace(/^\s*(\d+[.)]|[-*•])\s*/, '').trim()).filter(Boolean);
+  if(!lines.length) return '';
+  return `<div class="field"><div class="field-label">Steps to fix</div><ol class="steps">${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ol></div>`;
+}
+
+function render(){
+  const q = searchEl.value.trim().toLowerCase();
+  const terms = q.split(/\s+/).filter(Boolean);
+  const all = live();
+  const shown = all
+    .filter(e => filter === 'all' || e.type === filter)
+    .filter(e => {
+      if(!terms.length) return true;
+      const hay = FIELDS.map(f => e[f] || '').join(' ').toLowerCase();
+      return terms.every(t => hay.includes(t));
+    })
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt - a.createdAt);
+
+  countEl.textContent = `${shown.length} of ${all.length}`;
+
+  if(!all.length){
+    listEl.innerHTML = `<div class="empty">No entries yet.<br>After a major fault &mdash; or the first time you fix a simple one &mdash; tap <b>+ New</b> and write down the TCMS error, breakers, parts and the steps that fixed it.</div>`;
+    return;
+  }
+  if(!shown.length){
+    listEl.innerHTML = `<div class="empty">Nothing matches that search.</div>`;
+    return;
+  }
+  listEl.innerHTML = shown.map(e => `
+    <div class="card${openIds.has(e.id) ? ' open' : ''}" data-id="${esc(e.id)}">
+      <button type="button" class="card-head" aria-expanded="${openIds.has(e.id)}">
+        <div class="card-title">${esc(e.title || 'Untitled')}</div>
+        <div class="meta">
+          <span class="badge ${e.type === 'known' ? 'known' : 'major'}">${e.type === 'known' ? 'Known fix' : 'Major'}</span>
+          ${e.dirty ? '<span class="badge pending">Not synced</span>' : ''}
+          ${e.train ? `<span>Train ${esc(e.train)}</span>` : ''}
+          ${e.date ? `<span>${esc(fmtDate(e.date))}</span>` : ''}
+          ${e.system ? `<span>${esc(e.system)}</span>` : ''}
+        </div>
+        ${e.tcms ? `<div class="tcms-snip">TCMS: ${esc(e.tcms.split('\n')[0])}</div>` : ''}
+      </button>
+      <div class="card-body">
+        ${field('TCMS error', e.tcms)}
+        ${field('Breakers tripped', e.breakers)}
+        ${field('Components changed', e.components)}
+        ${field('What happened', e.happened)}
+        ${stepsHtml(e.steps)}
+        ${field('Notes / lessons', e.notes)}
+        <div class="card-actions">
+          <button type="button" class="ghost small" data-act="edit">Edit</button>
+          <button type="button" class="ghost small" data-act="copy">Copy as text</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+listEl.addEventListener('click', ev => {
+  const card = ev.target.closest('.card');
+  if(!card) return;
+  const id = card.dataset.id;
+  const act = ev.target.closest('[data-act]');
+  if(act && act.dataset.act === 'edit'){ openEditor(byId(id)); return; }
+  if(act && act.dataset.act === 'copy'){ copyText(byId(id)); return; }
+  if(ev.target.closest('.card-head')){
+    openIds.has(id) ? openIds.delete(id) : openIds.add(id);
+    card.classList.toggle('open');
+    card.querySelector('.card-head').setAttribute('aria-expanded', card.classList.contains('open'));
+  }
+});
+
+function copyText(e){
+  const parts = [
+    `${e.title} (${e.type === 'known' ? 'Known fix' : 'Major event'})`,
+    [e.train && `Train ${e.train}`, e.date, e.system].filter(Boolean).join(' · '),
+    e.tcms && `TCMS: ${e.tcms}`,
+    e.breakers && `Breakers: ${e.breakers}`,
+    e.components && `Components changed: ${e.components}`,
+    e.happened && `What happened: ${e.happened}`,
+    e.steps && 'Steps:\n' + e.steps.split('\n').filter(s => s.trim()).map((s, i) => `${i + 1}. ${s.trim()}`).join('\n'),
+    e.notes && `Notes: ${e.notes}`,
+  ].filter(Boolean).join('\n');
+  navigator.clipboard.writeText(parts).then(() => toast('Copied'), () => toast('Copy not allowed here'));
+}
+
+searchEl.addEventListener('input', render);
+document.getElementById('chips').addEventListener('click', ev => {
+  const chip = ev.target.closest('.chip');
+  if(!chip) return;
+  filter = chip.dataset.filter;
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c === chip));
+  render();
+});
+
+// ---------- editor ----------
+const form = document.getElementById('entryForm');
+const deleteBtn = document.getElementById('deleteBtn');
+let editingId = null;
+
+function openEditor(entry){
+  editingId = entry ? entry.id : null;
+  form.reset();
+  if(entry){
+    FIELDS.forEach(f => {
+      if(f === 'type') form.querySelector(`input[name=type][value="${entry.type === 'known' ? 'known' : 'major'}"]`).checked = true;
+      else form.elements[f].value = entry[f] || '';
+    });
+  }else{
+    form.elements.date.value = new Date().toLocaleDateString('en-CA');
+  }
+  deleteBtn.style.display = entry ? '' : 'none';
+  document.body.classList.add('editing');
+  window.scrollTo(0, 0);
+  form.elements.title.focus();
+}
+function closeEditor(){
+  editingId = null;
+  document.body.classList.remove('editing');
+}
+
+document.getElementById('newBtn').addEventListener('click', () => openEditor(null));
+document.getElementById('cancelBtn').addEventListener('click', closeEditor);
+
+form.addEventListener('submit', ev => {
+  ev.preventDefault();
+  const now = Date.now();
+  const data = {};
+  FIELDS.forEach(f => {
+    data[f] = f === 'type' ? form.querySelector('input[name=type]:checked').value : form.elements[f].value.trim();
+  });
+  let entry = editingId && byId(editingId);
+  if(entry){
+    Object.assign(entry, data, {updatedAt: Math.max(now, entry.updatedAt + 1), dirty:true});
+  }else{
+    entry = Object.assign({id:newId(), createdAt:now, updatedAt:now, deleted:false, dirty:true}, data);
+    entries.push(entry);
+  }
+  openIds.add(entry.id);
+  persist();
+  closeEditor();
+  render();
+  toast('Saved');
+  sync(false);
+});
+
+deleteBtn.addEventListener('click', () => {
+  const entry = editingId && byId(editingId);
+  if(!entry || !confirm('Delete this entry on all devices?')) return;
+  entry.deleted = true;
+  entry.updatedAt = Math.max(Date.now(), entry.updatedAt + 1);
+  entry.dirty = true;
+  persist();
+  closeEditor();
+  render();
+  toast('Deleted');
+  sync(false);
+});
+
+// ---------- settings & backup ----------
+const setUrl = document.getElementById('setUrl');
+const setKey = document.getElementById('setKey');
+setUrl.value = settings.url || '';
+setKey.value = settings.key || '';
+
+document.getElementById('saveSettings').addEventListener('click', () => {
+  const url = setUrl.value.trim();
+  if(url && !/^https:\/\/script\.google(usercontent)?\.com\//.test(url)){
+    toast('That doesn\'t look like an Apps Script web app URL');
+    return;
+  }
+  settings.url = url;
+  settings.key = setKey.value;
+  saveSettings();
+  sync(true);
+});
+document.getElementById('syncBtn').addEventListener('click', () => sync(true));
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({app:'ewl-fault-log', version:1, exportedAt:new Date().toISOString(), entries:entries.map(strip)}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `fault-log-${new Date().toLocaleDateString('en-CA')}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+const importFile = document.getElementById('importFile');
+document.getElementById('importBtn').addEventListener('click', () => importFile.click());
+importFile.addEventListener('change', async () => {
+  const file = importFile.files[0];
+  importFile.value = '';
+  if(!file) return;
+  try{
+    const data = JSON.parse(await file.text());
+    const list = Array.isArray(data) ? data : data.entries;
+    if(!Array.isArray(list)) throw new Error();
+    const before = new Map(entries.map(e => [e.id, e.updatedAt]));
+    const n = mergeIn(list);
+    // Imported entries are new to the sheet as far as we know — queue them for upload.
+    entries.forEach(e => { if(before.get(e.id) !== e.updatedAt) e.dirty = true; });
+    persist();
+    render();
+    toast(`Imported · ${n} added or updated`);
+    sync(false);
+  }catch(e){
+    toast('That file isn\'t a fault log backup');
+  }
+});
+
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ---------- start ----------
+window.addEventListener('online', () => sync(false));
+window.addEventListener('offline', idleStatus);
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') sync(false); });
+window.addEventListener('storage', ev => {
+  if(ev.key === STORE_KEY){ entries = load(STORE_KEY, []); render(); idleStatus(); }
+});
+
+render();
+idleStatus();
+sync(false);
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
