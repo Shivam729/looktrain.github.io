@@ -3,7 +3,7 @@
 
 export const VERSIONS = {
   EW: { weekday: 'EWWD081', saturday: 'EWSA049', sunday: 'EWSU043' },
-  NS: { saturday: 'NSSA048', sunday: 'NSSU039' },
+  NS: { weekday: 'NSWD074', saturday: 'NSSA048', sunday: 'NSSU039' },
 };
 export const LINE_NAMES = { EW: 'East-West Line', NS: 'North-South Line' };
 export const DIR_NAMES = { E: 'Eastbound', W: 'Westbound', N: 'Northbound', S: 'Southbound' };

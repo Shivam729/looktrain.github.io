@@ -39,6 +39,7 @@ function goLive(){ S.clock = { ...S.clock, mode: 'live', playing: false }; syncD
 // ---------- scene ----------
 const scene = new NetworkScene($('#stage'), { onPick: id => selectTrain(id) });
 window.__scene = scene;     // handy for debugging from the console
+window.__app = { S, findTrain: id => findTrain(id) };
 
 function poseOf(line, st){
   if(!st) return null;
@@ -89,8 +90,10 @@ async function loadDay(day){
     if(S.day !== day) return;
     S.data[line] = { ds, plans: buildPlans(line, ds) };
   });
-  try{ await Promise.all(jobs); }
+  S.loading = Promise.all(jobs);
+  try{ await S.loading; }
   catch(e){ toast('Couldn\'t load the timetable — check your connection.'); }
+  S.loading = null;
   renderDays();
   if(S.sel && !findTrain(S.sel.id)) clearSelection();
   S.cardKey = '';
@@ -330,10 +333,12 @@ function syncDock(){
 
 // ---------- events ----------
 $('#days').addEventListener('click', e => { const b = e.target.closest('button'); if(b) loadDay(b.dataset.day); });
-$('#search').addEventListener('submit', e => {
+$('#search').addEventListener('submit', async e => {
   e.preventDefault();
   const v = $('#q').value.trim().replace(/^0+/, '');
-  if(v) selectTrain(v);
+  if(!v) return;
+  if(S.loading){ toast('Loading timetable…'); try{ await S.loading; }catch(err){} }   // don't say "no train" mid-load
+  selectTrain(v);
 });
 $('#q').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 3); });
 $('#card').addEventListener('click', e => {
@@ -361,6 +366,14 @@ document.querySelectorAll('.lines button').forEach(b => b.addEventListener('clic
   b.classList.toggle('on', on); scene.setLineVisible(l, on);
 }));
 $('#overviewBtn').addEventListener('click', () => scene.overview());
+$('#homeBtn').addEventListener('click', () => scene.overview());
+$('#viewBtn').addEventListener('click', () => {
+  const top = !scene.top; scene.setTopView(top);
+  $('#viewBtn').textContent = top ? '3D' : '2D';
+  $('#viewBtn').setAttribute('aria-label', top ? 'Switch to 3D view' : 'Switch to 2D map');
+  try{ localStorage.setItem('lookup.view', top ? '2d' : '3d'); }catch(e){}
+});
+try{ if(localStorage.getItem('lookup.view') === '2d'){ scene.setTopView(true); scene.overview(); $('#viewBtn').textContent = '3D'; } }catch(e){}
 
 // bottom sheet (mobile)
 function setSheet(open){ document.body.classList.toggle('sheet-open', open); setTimeout(updateInsets, 600); }
