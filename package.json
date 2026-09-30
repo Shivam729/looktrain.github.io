@@ -1,0 +1,13 @@
+{
+  "name": "looktrain",
+  "private": true,
+  "description": "Scheduled live position of EWL/NSL trains, from the OCC timetables.",
+  "scripts": {
+    "build": "esbuild src/app.js --bundle --format=esm --minify --target=es2020,safari15 --outfile=app.js --legal-comments=none",
+    "watch": "npm run build -- --watch"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "three": "0.186.1"
+  }
+}

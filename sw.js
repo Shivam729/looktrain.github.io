@@ -1,8 +1,8 @@
 // Network-first cache so the site still opens with no signal (e.g. in tunnels or the depot).
 // Always tries the live site first, so timetable updates show up as soon as you're online.
 // Timetable files are cached in their encrypted form.
-const CACHE = 'looktrain-v2';
-const PAGES = ['./', 'index.html', 'data/meta.json', 'favicon.svg', 'favicon.ico', 'favicon-32.png', 'apple-touch-icon.png'];
+const CACHE = 'looktrain-v3';
+const PAGES = ['./', 'index.html', 'app.js', 'classic.html', 'data/meta.json', 'favicon.svg', 'favicon.ico', 'favicon-32.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(PAGES)).then(() => self.skipWaiting()));
