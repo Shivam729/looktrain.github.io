@@ -206,8 +206,8 @@
   .c-prog .bar i{ position:absolute; left:0; top:0; bottom:0; border-radius:6px; background:linear-gradient(90deg, color-mix(in srgb, var(--c) 30%, transparent), var(--c)); box-shadow:0 0 12px var(--c); transition:width .25s linear; }
   .c-prog .bar em{ position:absolute; top:50%; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%; background:#fff; box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 45%, transparent), 0 0 16px var(--c); transition:left .25s linear; }
   .c-prog .ends{ display:flex; justify-content:space-between; gap:10px; margin-top:8px; font-size:11px; color:var(--ink-2); }
-  .c-actions{ display:flex; gap:8px; margin-bottom:14px; }
-  .c-actions .gbtn{ flex:1; }
+  .c-actions{ display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .c-actions .gbtn{ flex:1; white-space:nowrap; padding:9px 10px; }
   #cTabs{ margin-bottom:12px; }
 
   .stops{ width:100%; border-collapse:collapse; font-size:13.5px; }
@@ -324,8 +324,9 @@
     .sheet{ top:auto; left:10px; right:10px; width:auto; bottom:calc(10px + var(--safe-b)); height:var(--sheet-h, 196px); --r:30px;
             transition:height .55s var(--ease-out); }
     body.sheet-open .sheet{ height:min(60vh, 560px); }
-    #grab{ display:block; width:100%; height:22px; border:0; background:none; cursor:grab; flex:none; }
-    #grab::before{ content:""; display:block; width:40px; height:5px; margin:9px auto 0; border-radius:3px; background:rgba(255,255,255,.35); }
+    body.sheet-full .sheet{ height:calc(100vh - 84px - var(--safe-t) - var(--safe-b)); height:calc(100dvh - 84px - var(--safe-t) - var(--safe-b)); }
+    #grab{ display:block; width:100%; height:34px; margin-bottom:-6px; border:0; background:none; cursor:grab; flex:none; touch-action:none; -webkit-user-select:none; user-select:none; }
+    #grab::before{ content:""; display:block; width:44px; height:5px; margin:12px auto 0; border-radius:3px; background:rgba(255,255,255,.45); }
     #search{ padding:2px 12px 8px; }
     #q{ font-size:20px; padding:10px 12px 10px 40px; }
     #card{ padding:2px 14px 16px; }

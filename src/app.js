@@ -40,6 +40,7 @@ function goLive(){ S.clock = { ...S.clock, mode: 'live', playing: false }; syncD
 const scene = new NetworkScene($('#stage'), { onPick: id => selectTrain(id) });
 window.__scene = scene;     // handy for debugging from the console
 window.__app = { S, findTrain: id => findTrain(id) };
+try{ scene.focusOnly = localStorage.getItem('lookup.focus') !== '0'; }catch(e){ scene.focusOnly = true; }
 
 function poseOf(line, st){
   if(!st) return null;
@@ -245,6 +246,7 @@ function renderCard(T){
       <div class="c-actions">
         <button class="gbtn" id="cFollow">${scene.follow ? '◉ Following' : '○ Follow'}</button>
         <button class="gbtn" id="cOverview">Overview</button>
+        <button class="gbtn" id="cFocus">${scene.focusOnly ? 'Show all trains' : 'Only this train'}</button>
       </div>
       <div class="seg small" id="cTabs"><span class="lens"></span>${tabs.map(t => `<button class="${t === S.tab ? 'on' : ''}" data-tab="${t}">${{ stops: 'Stops', day: 'Day plan', depot: 'Depot' }[t]}</button>`).join('')}</div>
       <div class="c-body" id="cBody">${tabBody(line, id, st, rec, T)}</div>`;
@@ -346,6 +348,7 @@ $('#card').addEventListener('click', e => {
   if(e.target.closest('#cClose')){ clearSelection(); scene.overview(); return; }
   if(e.target.closest('#cFollow')){ scene.follow = !scene.follow; if(scene.follow && S.sel) scene.select(S.sel.id); S.cardKey = ''; return; }
   if(e.target.closest('#cOverview')){ scene.overview(); S.cardKey = ''; return; }
+  if(e.target.closest('#cFocus')){ scene.focusOnly = !scene.focusOnly; S.cardKey = ''; try{ localStorage.setItem('lookup.focus', scene.focusOnly ? '1' : '0'); }catch(err){} return; }
   if(e.target.closest('[data-earlier]')){ e.target.remove(); $('#cBody .stops').classList.remove('folded'); return; }
   const tab = e.target.closest('#cTabs button'); if(tab){ S.tab = tab.dataset.tab; S.cardKey = ''; updateUi(nowT()); }
 });
@@ -376,7 +379,15 @@ $('#viewBtn').addEventListener('click', () => {
 try{ if(localStorage.getItem('lookup.view') === '2d'){ scene.setTopView(true); scene.overview(); $('#viewBtn').textContent = '3D'; } }catch(e){}
 
 // bottom sheet (mobile)
-function setSheet(open){ document.body.classList.toggle('sheet-open', open); setTimeout(updateInsets, 600); }
+// Bottom sheet (phones) has three heights: 'peek', 'half', 'full'.
+let sheetState = 'peek';
+function setSheet(open){ setSheetState(open === true ? 'half' : open === false ? 'peek' : open); }
+function setSheetState(st){
+  sheetState = st;
+  document.body.classList.toggle('sheet-open', st !== 'peek');
+  document.body.classList.toggle('sheet-full', st === 'full');
+  setTimeout(updateInsets, 600);
+}
 // Tell the 3D view how much of the screen the glass panels cover.
 function updateInsets(){
   const W = innerWidth, H = innerHeight;
@@ -389,14 +400,43 @@ function updateInsets(){
   }
 }
 addEventListener('resize', updateInsets);
-$('#grab').addEventListener('click', () => setSheet(!document.body.classList.contains('sheet-open')));
-let dragY = null;
-$('#grab').addEventListener('pointerdown', e => { dragY = e.clientY; });
-addEventListener('pointerup', e => {
-  if(dragY == null) return;
-  const dy = e.clientY - dragY; dragY = null;
-  if(Math.abs(dy) > 30) setSheet(dy < 0);
-});
+// Drag the sheet with the finger; snap to the nearest height on release (a flick picks the next one).
+{
+  const grab = $('#grab'), sheet = $('#sheet');
+  let drag = null;
+  const heights = () => ({ peek: 196, half: Math.min(innerHeight * .6, 560), full: innerHeight - 24 - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-t')) || 0) - 60 });
+  grab.addEventListener('pointerdown', e => {
+    if(innerWidth > 860) return;
+    grab.setPointerCapture(e.pointerId);
+    drag = { y: e.clientY, h: sheet.getBoundingClientRect().height, t: performance.now(), moved: false, lastY: e.clientY, lastT: performance.now(), v: 0 };
+    sheet.style.transition = 'none';
+  });
+  grab.addEventListener('pointermove', e => {
+    if(!drag) return;
+    const dy = e.clientY - drag.y;
+    if(Math.abs(dy) > 4) drag.moved = true;
+    const now = performance.now();
+    drag.v = (e.clientY - drag.lastY) / Math.max(1, now - drag.lastT); drag.lastY = e.clientY; drag.lastT = now;
+    const H = heights();
+    sheet.style.height = Math.max(120, Math.min(H.full, drag.h - dy)) + 'px';
+  });
+  const end = e => {
+    if(!drag) return;
+    const d = drag; drag = null;
+    const cur = sheet.getBoundingClientRect().height;
+    sheet.style.transition = ''; sheet.style.height = '';
+    if(!d.moved){ setSheetState(sheetState === 'peek' ? 'half' : 'peek'); return; }   // tap toggles
+    const H = heights(), order = ['peek', 'half', 'full'];
+    let target = order.reduce((a, b) => Math.abs(H[b] - cur) < Math.abs(H[a] - cur) ? b : a);
+    if(Math.abs(d.v) > .5){                                     // flick: move one step in that direction
+      const i = order.indexOf(sheetState);
+      target = order[Math.max(0, Math.min(2, i + (d.v < 0 ? 1 : -1)))];
+    }
+    setSheetState(target);
+  };
+  grab.addEventListener('pointerup', end);
+  grab.addEventListener('pointercancel', end);
+}
 
 // specular highlight that follows the pointer across glass
 addEventListener('pointermove', e => {
