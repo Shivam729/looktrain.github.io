@@ -18,7 +18,7 @@ export class NetworkScene {
   constructor(host, { onPick, onHover } = {}){
     this.host = host; this.onPick = onPick; this.onHover = onHover;
     this.trains = new Map();
-    this.selected = null; this.follow = true; this.fly = null; this.top = false;
+    this.selected = null; this.follow = true; this.fly = null; this.top = false; this.focusOnly = true;
     this.visibleLines = { EW: true, NS: true };
     this.clock = new THREE.Timer();
     this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -210,7 +210,9 @@ export class NetworkScene {
     for(const it of list){
       alive.add(it.id);
       const t = this.trains.get(it.id) || this.makeTrain(it.id, it.line);
-      const show = it.state !== 'hidden' && this.visibleLines[it.line];
+      // Focus mode: with a train selected, hide all the others so it's the only one on the map.
+      const others = !(this.focusOnly && this.selected && it.id !== this.selected);
+      const show = it.state !== 'hidden' && this.visibleLines[it.line] && others;
       t.group.visible = show || it.id === this.selected;
       if(!it.pos){ t.group.visible = false; continue; }
       if(!t.seen || t.pos.distanceTo(it.pos) > 3){ t.pos.copy(it.pos); t.seen = true; }
