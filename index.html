@@ -245,20 +245,30 @@
   .verdict.job{ background:rgba(53,226,122,.14); color:#5dffa0; box-shadow:inset 0 0 0 1px rgba(53,226,122,.5), 0 0 30px -8px rgba(53,226,122,.6); }
   .muted{ color:var(--ink-2); font-size:13px; }
 
-  /* 3D labels */
+  /* 3D labels: solid chips so they read on any background */
   .labels{ position:fixed !important; inset:0; pointer-events:none; }
-  .st-label{ display:flex; flex-direction:column; align-items:center; gap:1px; transform:translateY(-6px); pointer-events:none; transition:opacity .3s; }
-  .st-label b{ font-size:9.5px; font-weight:750; letter-spacing:.8px; color:#fff; padding:2px 6px; border-radius:6px;
-    background:rgba(8,14,24,.55); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c, #9cf) 55%, transparent); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
-  .st-label span{ font-size:10px; color:var(--ink-2); text-shadow:0 1px 4px #000; white-space:nowrap; display:none; }
-  .st-label.depot b{ box-shadow:inset 0 0 0 1px rgba(127,182,255,.7); color:#bcd8ff; }
-  .labels[data-zoom="far"] .st-label:not(.major){ opacity:0; }
+  .st-label{ display:flex; flex-direction:column; align-items:center; gap:2px; pointer-events:none; }
+  .st-label b{ font-size:10px; font-weight:750; letter-spacing:.6px; color:#fff; padding:2px 6px; border-radius:5px;
+    background:rgba(5,9,16,.86); box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c, #9cf) 85%, transparent); }
+  .st-label.inter b{ background:#fff; color:#05090f; box-shadow:none; }
+  .st-label span{ font-size:10.5px; font-weight:600; color:#e8eef8; text-shadow:0 0 3px #000, 0 1px 3px #000; white-space:nowrap; display:none; }
+  .st-label.depot b{ box-shadow:inset 0 0 0 1.5px #8fb4e8; color:#cfe0ff; }
+  .labels[data-zoom="far"] .st-label:not(.major){ display:none; }
   .labels[data-zoom="near"] .st-label span{ display:block; }
   .labels[data-zoom="mid"] .st-label.major span{ display:block; }
-  .train-tag{ font-size:13px; font-weight:800; letter-spacing:.5px; color:#fff; padding:4px 10px; border-radius:999px; transform:translateY(-10px);
-    background:linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.1)); -webkit-backdrop-filter:blur(10px) saturate(180%); backdrop-filter:blur(10px) saturate(180%);
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.6), 0 0 0 1px color-mix(in srgb, var(--c) 80%, transparent), 0 0 24px -2px var(--c); }
-  .train-tag.hover{ font-size:11px; padding:3px 8px; opacity:.9; }
+  .tr-label{ font-size:11px; font-weight:800; letter-spacing:.3px; color:#fff; padding:1px 6px; border-radius:999px; line-height:15px;
+    background:rgba(5,9,16,.88); box-shadow:inset 0 0 0 1.5px var(--c); pointer-events:none; white-space:nowrap; }
+  .tr-label[data-state="off"]{ box-shadow:inset 0 0 0 1.5px var(--amber); color:#ffe2a6; }
+  .tr-label[data-state="idle"]{ box-shadow:inset 0 0 0 1.5px #8a96a8; color:#c9d2de; }
+  .tr-label[data-state="hidden"], .tr-label.sel{ display:none; }
+  .labels[data-zoom="far"] .tr-label:not(.hover){ display:none; }
+  .tr-label.hover{ display:block; background:#fff; color:#05090f; }
+  .train-tag{ font-size:14px; font-weight:800; letter-spacing:.4px; color:#05090f; padding:4px 11px; border-radius:999px; background:#fff;
+    box-shadow:0 0 0 2px var(--c), 0 4px 14px rgba(0,0,0,.6); }
+
+  /* map controls */
+  .mapctl{ position:fixed; top:calc(92px + var(--safe-t)); right:432px; display:flex; flex-direction:column; gap:6px; padding:6px; --r:22px; z-index:4; }
+  .mapctl .gbtn{ width:44px; height:40px; padding:0; font-size:12px; font-weight:750; }
 
   /* lock */
   .lock{ position:fixed; inset:0; display:grid; place-items:center; z-index:10; padding:20px; pointer-events:none; opacity:0; transition:opacity .6s var(--ease-out); }
@@ -302,6 +312,8 @@
     .lines b{ font-size:19px; min-width:0; } .lines .sw{ height:24px; width:7px; }
     .lines .t{ font-size:11px; } .lines small{ font-size:10px; }
     #dayWarn{ margin:6px 4px 2px; font-size:10.5px; }
+    .mapctl{ right:10px; top:calc(176px + var(--safe-t)); padding:5px; --r:18px; }
+    .mapctl .gbtn{ width:40px; height:36px; }
     .dock{ left:10px; right:10px; width:auto; transform:none; bottom:calc(var(--sheet-h, 206px) + 16px + var(--safe-b)); padding:6px; gap:6px; transition:bottom .55s var(--ease-out), opacity .4s; }
     body.locked .dock, body.booting .dock{ transform:translateY(10px); }
     body.sheet-open .dock{ opacity:0; pointer-events:none; }
@@ -350,9 +362,14 @@
   </div>
   <div id="dayWarn" hidden>Showing a different day's timetable than today's. Public holidays usually run the Sunday timetable.</div>
   <div class="row"><button class="gbtn" id="overviewBtn">Overview</button></div>
-  <div class="foot">Positions are where trains are <b>scheduled</b> to be from the OCC timetables — not live tracking. ~ times are estimated between timing points. Drag to orbit · pinch or scroll to zoom · tap a train.<br>
+  <div class="foot">Positions are where trains are <b>scheduled</b> to be from the OCC timetables — not live tracking. ~ times are estimated between timing points. Drag to move · pinch or scroll to zoom · 2D for a flat map · tap a train.<br>
     <a href="classic.html">Classic view</a> · <button id="lockBtn">Lock this device</button></div>
 </aside>
+
+<div class="mapctl glass ui">
+  <button class="gbtn" id="viewBtn" aria-label="Switch to 2D map" title="2D / 3D">2D</button>
+  <button class="gbtn" id="homeBtn" aria-label="Show whole network" title="Whole network">⤢</button>
+</div>
 
 <div class="dock glass ui" id="dock">
   <button class="gbtn" id="liveBtn">LIVE</button>
