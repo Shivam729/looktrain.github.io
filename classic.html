@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MRT Train Lookup</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0b0f10">
+<style>
+  :root{
+    --bg: #0b0f10;
+    --panel: #12181a;
+    --amber: #ffb100;
+    --amber-dim: #7a5700;
+    --green: #3ddc84;
+    --green-dim: #164a2e;
+    --grey: #7d8a8c;
+    --line: #263133;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--amber);
+    font-family: 'Courier New', 'JetBrains Mono', monospace;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding:32px 16px 60px;
+  }
+  .board{
+    width:100%;
+    max-width:640px;
+  }
+  .board-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    border-bottom:2px solid var(--line);
+    padding-bottom:10px;
+    margin-bottom:16px;
+    letter-spacing:1px;
+  }
+  .board-head h1{
+    font-size:15px;
+    margin:0;
+    color:var(--amber);
+    text-transform:uppercase;
+    font-weight:700;
+  }
+  .board-head span{
+    font-size:11px;
+    color:var(--grey);
+  }
+
+  .daytabs{
+    display:flex;
+    gap:6px;
+    margin-bottom:18px;
+  }
+  .daytab{
+    flex:1;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--grey);
+    font-family:inherit;
+    font-size:12px;
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+    padding:10px 6px;
+    cursor:pointer;
+    border-radius:2px;
+    text-align:center;
+  }
+  .daytab.active{
+    color:var(--amber);
+    border-color:var(--amber-dim);
+    background:#1a1400;
+  }
+  .daytab:hover{ color:var(--amber); }
+  .daytab .sub{
+    display:block;
+    font-size:9px;
+    color:var(--grey);
+    margin-top:3px;
+    text-transform:none;
+    letter-spacing:0;
+  }
+
+  form{
+    display:flex;
+    gap:8px;
+    margin-bottom:22px;
+  }
+  input[type=text]{
+    flex:1;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--amber);
+    font-family:inherit;
+    font-size:28px;
+    letter-spacing:6px;
+    padding:12px 16px;
+    border-radius:2px;
+    outline:none;
+  }
+  input[type=text]::placeholder{
+    color:#4a4a3a;
+    letter-spacing:2px;
+    font-size:16px;
+  }
+  input[type=text]:focus{
+    border-color:var(--amber-dim);
+  }
+  button{
+    background:var(--amber);
+    color:#1a1200;
+    border:none;
+    font-family:inherit;
+    font-weight:700;
+    font-size:14px;
+    letter-spacing:1px;
+    padding:0 20px;
+    border-radius:2px;
+    cursor:pointer;
+    text-transform:uppercase;
+  }
+  button:hover{ background:#ffc733; }
+  button:focus-visible, input:focus-visible{ outline:2px solid var(--green); outline-offset:2px; }
+
+  #result{ min-height:120px; }
+
+  .row{
+    display:grid;
+    grid-template-columns:110px 1fr 1fr;
+    border:1px solid var(--line);
+    border-bottom:none;
+  }
+  .row:last-child{ border-bottom:1px solid var(--line); }
+  .row > div{
+    padding:14px 14px;
+    border-right:1px solid var(--line);
+  }
+  .row > div:last-child{ border-right:none; }
+  .row.head{
+    background:#0e1415;
+    color:var(--grey);
+    font-size:10px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    padding:8px 14px;
+  }
+  .row.head > div{ padding:0; border:none; }
+  .depot-code{
+    font-size:26px;
+    font-weight:700;
+    letter-spacing:1px;
+  }
+  .depot-code.ecid{ color:var(--green); }
+  .point, .time{
+    font-size:14px;
+    color:#d9c98a;
+  }
+  .time{ color:var(--amber); }
+
+  .verdict{
+    margin-top:18px;
+    padding:16px 18px;
+    border-radius:2px;
+    font-size:15px;
+    letter-spacing:0.5px;
+    font-weight:700;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    animation: flap .35s ease;
+  }
+  .verdict.job{
+    background:var(--green-dim);
+    color:var(--green);
+    border:1px solid var(--green);
+  }
+  .verdict.notjob{
+    background:#1a1a1a;
+    color:var(--grey);
+    border:1px solid var(--line);
+  }
+  .dot{
+    width:10px;height:10px;border-radius:50%;
+    background:currentColor;
+    box-shadow:0 0 8px currentColor;
+    flex-shrink:0;
+  }
+  @keyframes flap{
+    from{ opacity:0; transform: translateY(-6px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+
+  .placeholder, .error{
+    color:var(--grey);
+    font-size:13px;
+    line-height:1.6;
+    padding:20px 4px;
+  }
+  .error{ color:#ff6b5e; }
+
+  .footnote{
+    margin-top:34px;
+    padding-top:14px;
+    border-top:1px solid var(--line);
+    color:var(--grey);
+    font-size:11px;
+    line-height:1.7;
+  }
+  .footnote b{ color:#a8a8a8; }
+
+  .browse{
+    margin-top:10px;
+  }
+  .browse summary{
+    cursor:pointer;
+    color:var(--grey);
+    font-size:12px;
+    letter-spacing:0.5px;
+    padding:4px 0;
+  }
+  .browse table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:10px;
+    font-size:12px;
+  }
+  .browse th{
+    text-align:left;
+    color:var(--grey);
+    font-weight:400;
+    border-bottom:1px solid var(--line);
+    padding:6px 8px;
+  }
+  .browse td{
+    padding:6px 8px;
+    border-bottom:1px solid #1a2224;
+    color:#c9c9b8;
+  }
+  .browse tr:hover td{ background:#0f1516; }
+  .browse .ec{ color:var(--green); font-weight:700; }
+
+  #trainInput{ min-width:0; width:100%; }
+  .linetabs{ display:flex; gap:6px; margin-bottom:8px; }
+  .linetab{ flex:1; }
+  .linetab .sub{ font-size:9px; }
+  .daytab:disabled{ opacity:.35; cursor:not-allowed; }
+  .daytab .today{
+    display:inline-block;
+    margin-left:6px;
+    font-size:8px;
+    color:var(--green);
+    border:1px solid var(--green-dim);
+    padding:0 4px;
+    vertical-align:middle;
+  }
+
+  .clock{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:-8px 0 18px;
+    font-size:12px;
+    color:var(--grey);
+    flex-wrap:wrap;
+  }
+  .clock input[type=time]{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--amber);
+    font-family:inherit;
+    font-size:14px;
+    padding:6px 8px;
+    border-radius:2px;
+  }
+  .clock button{ font-size:11px; padding:7px 10px; }
+  .clock .live{ color:var(--green); display:flex; align-items:center; gap:6px; }
+  .clock .live .dot{ width:7px; height:7px; box-shadow:none; }
+  .clock .warn{ color:var(--amber); width:100%; }
+
+  .card{
+    border:1px solid var(--line);
+    background:var(--panel);
+    padding:16px;
+    margin-bottom:14px;
+    border-radius:2px;
+  }
+  .card-label{
+    font-size:10px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:var(--grey);
+    margin-bottom:10px;
+    display:flex;
+    justify-content:space-between;
+    gap:8px;
+  }
+  .where{ font-size:22px; font-weight:700; line-height:1.25; margin-bottom:6px; }
+  .where small{ display:block; font-size:12px; font-weight:400; color:var(--grey); margin-top:4px; }
+  .svc{ font-size:12px; margin-bottom:12px; }
+  .svc.in{ color:var(--green); }
+  .svc.off{ color:#ff8a5c; }
+  .svc.idle{ color:var(--grey); }
+  .nextline{ font-size:14px; color:#d9c98a; margin-bottom:4px; }
+  .nextline b{ color:var(--amber); }
+
+  .track{
+    position:relative;
+    height:28px;
+    margin:16px 10px 4px;
+  }
+  .track .rail{ position:absolute; left:0; right:0; top:13px; height:2px; background:var(--line); }
+  .track .done{ position:absolute; left:0; top:13px; height:2px; background:var(--amber-dim); }
+  .track .tick{ position:absolute; top:9px; width:2px; height:10px; background:var(--line); }
+  .track .tick.tp{ background:var(--grey); }
+  .track .train{
+    position:absolute; top:6px; width:16px; height:16px; margin-left:-8px;
+    background:var(--amber); border-radius:50%;
+    box-shadow:0 0 10px var(--amber);
+  }
+  .track-ends{ display:flex; justify-content:space-between; font-size:11px; color:var(--grey); }
+
+  .stops{ width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
+  .stops td{ padding:5px 6px; border-bottom:1px solid #1a2224; color:#c9c9b8; vertical-align:top; }
+  .stops td.t{ width:88px; color:var(--amber); white-space:nowrap; }
+  .stops tr.est td.t{ color:#b58a2a; }
+  .stops tr.past td{ color:#4f5a5c; }
+  .stops tr.here td{ background:#1a1400; }
+  .stops td.nm small{ color:var(--grey); font-size:11px; }
+  .stops tr.off td.nm{ color:#ff8a5c; }
+  .muted{ color:var(--grey); font-size:12px; line-height:1.6; }
+
+  details.day{ margin-top:4px; }
+  details.day summary{ cursor:pointer; color:var(--grey); font-size:12px; letter-spacing:.5px; padding:4px 0; }
+  .trip{ border-top:1px solid #1a2224; padding:8px 0; font-size:13px; }
+  .trip summary{ cursor:pointer; list-style:none; display:flex; gap:10px; align-items:baseline; color:#c9c9b8; }
+  .trip summary::-webkit-details-marker{ display:none; }
+  .trip .d{ color:var(--amber); width:18px; font-weight:700; }
+  .trip .tm{ color:var(--amber); white-space:nowrap; }
+  .trip.cur summary{ color:var(--amber); }
+  .trip .offtag{ color:#ff8a5c; font-size:11px; }
+
+  .browse .nowc{ color:#d9c98a; }
+
+  #lockView{ display:none; }
+  body.locked #lockView{ display:block; }
+  body.locked #appView{ display:none; }
+  .lockbox{ border:1px solid var(--line); background:var(--panel); padding:22px 18px; }
+  .lockbox p{ color:var(--grey); font-size:13px; line-height:1.6; margin:0 0 16px; }
+  .lockbox form{ margin-bottom:10px; }
+  .lockbox input[type=password]{
+    flex:1; min-width:0; width:100%;
+    background:var(--bg); border:1px solid var(--line); color:var(--amber);
+    font-family:inherit; font-size:18px; letter-spacing:2px; padding:12px 14px; border-radius:2px; outline:none;
+  }
+  .lockbox input[type=password]:focus{ border-color:var(--amber-dim); }
+  #lockMsg{ font-size:12px; min-height:18px; color:var(--grey); }
+  #lockMsg.err{ color:#ff6b5e; }
+  .lockout{ background:none; border:none; color:var(--grey); font-size:11px; padding:0; text-decoration:underline; cursor:pointer; letter-spacing:0; text-transform:none; font-weight:400; }
+  .lockout:hover{ background:none; color:var(--amber); }
+  @media (max-width:520px){
+    .row{ grid-template-columns:70px 1fr 1fr; }
+    .depot-code{ font-size:20px; }
+    .where{ font-size:19px; }
+    .browse .hide-sm{ display:none; }
+  }
+</style>
+</head>
+<body class="locked">
+<div class="board">
+
+  <div class="board-head">
+    <h1 id="title">Train Lookup</h1>
+    <span id="headMeta"></span>
+  </div>
+
+  <section id="lockView">
+    <div class="lockbox">
+      <p>The timetable data on this site is encrypted. Enter the password once on this device and it'll be remembered.</p>
+      <form id="lockForm" autocomplete="on">
+        <input type="text" name="username" value="looktrain" autocomplete="username" hidden>
+        <input type="password" id="lockPass" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" id="unlockBtn">Unlock</button>
+      </form>
+      <div id="lockMsg"></div>
+    </div>
+  </section>
+
+  <section id="appView">
+  <div class="daytabs linetabs" id="lineTabs">
+    <button type="button" class="daytab linetab" data-line="EW">East-West<span class="sub">EWL</span></button>
+    <button type="button" class="daytab linetab" data-line="NS">North-South<span class="sub">NSL</span></button>
+  </div>
+  <div class="daytabs" id="dayTabs">
+    <button type="button" class="daytab" data-day="weekday">Weekday<span class="sub"></span></button>
+    <button type="button" class="daytab" data-day="saturday">Saturday<span class="sub"></span></button>
+    <button type="button" class="daytab" data-day="sunday">Sunday<span class="sub"></span></button>
+  </div>
+
+  <div class="clock" id="clock">
+    <span id="liveTag" class="live"><span class="dot"></span>Live</span>
+    <label for="timeInput">Time</label>
+    <input type="time" id="timeInput" step="1">
+    <button type="button" class="ghost" id="nowBtn">Now</button>
+    <span class="warn" id="dayWarn" hidden></span>
+  </div>
+
+  <form id="lookupForm" autocomplete="off">
+    <input type="text" id="trainInput" placeholder="e.g. 305" inputmode="numeric" maxlength="3" />
+    <button type="submit" id="findBtn">Find</button>
+  </form>
+
+  <div id="result">
+    <div class="placeholder">Enter a 3-digit train number to see where it should be right now, its next stops, and where it launches from and withdraws to.</div>
+  </div>
+
+  <details class="browse" id="browse">
+    <summary id="browseSummary">Browse all trains &rarr;</summary>
+    <table id="browseTable">
+      <thead><tr><th>Train</th><th id="nowHead">Now (sched.)</th><th class="hide-sm">Launch</th><th>Withdraw</th><th>Time</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </details>
+
+  <div class="footnote" id="footnote"></div>
+  <div class="footnote" style="border:none;margin-top:8px;padding:0;"><a class="lockout" href="./" style="margin-right:14px">&larr; 3D live view</a><button type="button" class="lockout" id="lockBtn">Lock this device</button></div>
+  </section>
+
+</div>
+
+<script>
+// ---------- timetables ----------
+// One encrypted file per timetable version in data/ (see data/meta.json for the key derivation).
+const VERSIONS = {
+  EW: { weekday: 'EWWD081', saturday: 'EWSA049', sunday: 'EWSU043' },
+  NS: { saturday: 'NSSA048', sunday: 'NSSU039' },
+};
+const LINE_NAMES = { EW: 'East-West Line', NS: 'North-South Line' };
+
+// Stations in line order with rough distance (km) from the previous one. Only used to
+// estimate times at stations the OCC report doesn't list; timing-point times are exact.
+const LINES = {
+  EW: {
+    main: [['TLK','Tuas Link',0],['TWR','Tuas West Road',1.1],['TCR','Tuas Crescent',1.3],['GCL','Gul Circle',1.5],
+      ['JKN','Joo Koon',2.2],['PNR','Pioneer',2.0],['BNL','Boon Lay',1.2],['LKS','Lakeside',1.6],['CNG','Chinese Garden',1.3],
+      ['JUR','Jurong East',1.3],['CLE','Clementi',2.6],['DVR','Dover',1.7],['BNV','Buona Vista',1.7],['COM','Commonwealth',1.1],
+      ['QUE','Queenstown',0.9],['RDH','Redhill',1.6],['TIB','Tiong Bahru',1.2],['OTP','Outram Park',1.3],['TPG','Tanjong Pagar',0.9],
+      ['RFP','Raffles Place',1.1],['CTH','City Hall',0.9],['BGS','Bugis',1.0],['LVR','Lavender',0.8],['KAL','Kallang',1.0],
+      ['ALJ','Aljunied',1.3],['PYL','Paya Lebar',1.1],['EUN','Eunos',1.1],['KEM','Kembangan',1.1],['BDK','Bedok',1.5],
+      ['TNM','Tanah Merah',1.8],['SIM','Simei',2.0],['TAM','Tampines',1.5],['PSR','Pasir Ris',2.4]],
+    branch: { from: 'TNM', stations: [['XPO','Expo',3.5],['CGA','Changi Airport',2.4]] },
+  },
+  NS: {
+    main: [['JUR','Jurong East',0],['BBT','Bukit Batok',2.2],['BGB','Bukit Gombak',1.4],['CCK','Choa Chu Kang',2.0],
+      ['YWT','Yew Tee',1.4],['KRJ','Kranji',3.4],['MSL','Marsiling',2.4],['WDL','Woodlands',1.4],['ADM','Admiralty',1.4],
+      ['SBW','Sembawang',1.5],['CBR','Canberra',1.8],['YIS','Yishun',1.7],['KTB','Khatib',3.6],['YCK','Yio Chu Kang',4.0],
+      ['AMK','Ang Mo Kio',1.1],['BSH','Bishan',2.4],['BDL','Braddell',1.6],['TAP','Toa Payoh',1.0],['NOV','Novena',1.4],
+      ['NEW','Newton',1.3],['ORC','Orchard',1.1],['SOM','Somerset',0.9],['DBG','Dhoby Ghaut',0.9],['CTH','City Hall',1.0],
+      ['RFP','Raffles Place',1.1],['MRB','Marina Bay',0.9],['MSP','Marina South Pier',1.4]],
+  },
+};
+const DEPOTS = { ECID: 'East Coast Integrated Depot', TWD: 'Tuas West Depot', UPD: 'Ulu Pandan Depot', BSD: 'Bishan Depot' };
+const DIR_NAMES = { E: 'Eastbound', W: 'Westbound', N: 'Northbound', S: 'Southbound' };
+
+// Build lookup tables: station -> {name, km, branch?}
+const GEO = {};
+for(const [line, def] of Object.entries(LINES)){
+  const g = GEO[line] = {};
+  let km = 0;
+  def.main.forEach(([c, n, d], i) => { km += d; g[c] = { code: c, name: n, km, idx: i }; });
+  if(def.branch){
+    let bk = 0;
+    def.branch.stations.forEach(([c, n, d], i) => { bk += d; g[c] = { code: c, name: n, bkm: bk, branch: true, idx: i }; });
+  }
+}
+
+// "TLK A" -> station TLK; "ECID-TB3A" -> depot; "JKN S" / "PSR S A" -> siding near a station.
+function locate(line, label){
+  const dep = label.match(/^(ECID|TWD|UPD|BSD)\b/);
+  if(dep) return { kind: 'depot', code: dep[1], name: DEPOTS[dep[1]], label };
+  const code = label.split(/[\s-]/)[0];
+  const st = GEO[line][code];
+  if(!st) return { kind: 'other', code, name: label, label };
+  const siding = /\sS(\s|$)/.test(label) || /^TNM B/.test(label) && line === 'EW';
+  return { kind: siding ? 'siding' : 'station', code, name: st.name + (siding ? ' siding' : ''), label };
+}
+
+// Stations strictly between two stations, in travel order, with distance from a.
+function between(line, a, b){
+  const g = GEO[line], def = LINES[line];
+  const pathMain = (x, y) => {
+    if(x === y) return [];
+    const i = g[x].idx, j = g[y].idx, step = i < j ? 1 : -1, out = [];
+    for(let k = i + step; k !== j; k += step){ out.push(def.main[k][0]); }
+    return out;
+  };
+  const pathBranch = (x, y) => {  // x, y in [from, ...branch]
+    if(x === y) return [];
+    const seq = [def.branch.from, ...def.branch.stations.map(s => s[0])];
+    const i = seq.indexOf(x), j = seq.indexOf(y), step = i < j ? 1 : -1, out = [];
+    for(let k = i + step; k !== j; k += step){ out.push(seq[k]); }
+    return out;
+  };
+  const onBranch = c => g[c] && g[c].branch;
+  let seq;
+  if(!g[a] || !g[b] || a === b) return [];
+  if(!onBranch(a) && !onBranch(b)) seq = pathMain(a, b);
+  else if(onBranch(a) && onBranch(b)) seq = pathBranch(a, b);
+  else {
+    const j = def.branch.from, mid = (a === j || b === j) ? [] : [j];   // pass through the junction
+    seq = onBranch(a) ? [...pathBranch(a, j), ...mid, ...pathMain(j, b)] : [...pathMain(a, j), ...mid, ...pathBranch(j, b)];
+  }
+  // cumulative distance along the path
+  const pos = c => g[c].branch ? g[def.branch.from].km + g[c].bkm : g[c].km;
+  const dist = (x, y) => (onBranch(x) !== onBranch(y) && !(x === def.branch.from || y === def.branch.from))
+    ? Math.abs(pos(x) - g[def.branch.from].km) + Math.abs(pos(y) - g[def.branch.from].km)
+    : Math.abs(pos(x) - pos(y));
+  const total = dist(a, b);
+  let prev = a, acc = 0;
+  return seq.map(c => { acc += dist(prev, c); prev = c; return { code: c, frac: total ? acc / total : 0 }; });
+}
+
+// Expand one trip's timing points into every station, estimating the ones in between.
+function expandTrip(line, trip){
+  const [, dir, pts] = trip, rows = [];
+  pts.forEach(([label, t, off], i) => {
+    const loc = locate(line, label);
+    if(i > 0){
+      const [pl, pt] = pts[i - 1];
+      const a = locate(line, pl);
+      if(a.kind !== 'depot' && loc.kind !== 'depot' && a.kind !== 'other' && loc.kind !== 'other'){
+        for(const s of between(line, a.code, loc.code)){
+          rows.push({ code: s.code, name: GEO[line][s.code].name, t: Math.round(pt + (t - pt) * s.frac), est: true, off: !!off });
+        }
+      }
+    }
+    // Avoid listing the same station twice in a row (e.g. JKN S then JKN A)
+    const last = rows[rows.length - 1];
+    if(last && last.code === loc.code && loc.kind === last.kind && !last.est){ last.t2 = t; last.label += ' / ' + label; return; }
+    rows.push({ code: loc.code, name: loc.name, kind: loc.kind, label, t, est: false, off: !!off });
+  });
+  return { dir, rows, start: rows[0].t, end: rows[rows.length - 1].t, off: pts.every(p => p[2]) };
+}
+
+// ---------- time (always Singapore) ----------
+const SGT = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+function sgNow(){
+  const p = Object.fromEntries(SGT.formatToParts(new Date()).map(x => [x.type, x.value]));
+  let sec = +p.hour * 3600 + +p.minute * 60 + +p.second;
+  let wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(p.weekday);
+  // Service day runs until ~04:00: after midnight still counts as the previous day's timetable.
+  if(sec < 4 * 3600){ sec += 86400; wd = (wd + 6) % 7; }
+  return { sec, day: wd === 0 ? 'sunday' : wd === 6 ? 'saturday' : 'weekday' };
+}
+function hms(sec, withSec = true){
+  sec = Math.round(sec);
+  const d = sec >= 86400, s = ((sec % 86400) + 86400) % 86400;
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + (withSec ? ':' + String(x).padStart(2, '0') : '');
+}
+function inText(d){
+  d = Math.round(d);
+  if(d < 60) return `${d}s`;
+  const m = Math.floor(d / 60), s = d % 60;
+  if(m < 60) return s && m < 10 ? `${m} min ${s}s` : `${m} min`;
+  return `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+function formatTime(t){
+  const m = t.match(/^1\.(\d{1,2}:\d{2}:\d{2})$/);
+  if(m){ return `${m[1]} <span style="color:var(--grey);font-size:11px;">(next day)</span>`; }
+  return t;
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ---------- state ----------
+let currentLine = 'EW', currentDay = 'weekday';
+let customSec = null;           // null = live
+let shownTrain = null;
+const cache = {};
+let ds = null;                  // current dataset
+let plans = {};                 // train -> [expanded trips]
+
+const $ = id => document.getElementById(id);
+const form = $('lookupForm'), input = $('trainInput'), result = $('result'), headMeta = $('headMeta');
+const footnote = $('footnote'), browseSummary = $('browseSummary'), tbody = document.querySelector('#browseTable tbody');
+const timeInput = $('timeInput'), liveTag = $('liveTag'), dayWarn = $('dayWarn');
+
+// ---------- encrypted data ----------
+const KEY_STORE = 'lookup.key.v1';
+let aesKey = null, meta = null;
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const b64 = u8 => btoa(String.fromCharCode(...u8));
+
+async function getMeta(){
+  if(!meta){ const r = await fetch('data/meta.json', { cache: 'no-cache' }); if(!r.ok) throw new Error('meta ' + r.status); meta = await r.json(); }
+  return meta;
+}
+async function openBox(box){
+  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv) }, aesKey, unb64(box.ct)));
+}
+async function tryKey(key){
+  const m = await getMeta();
+  try{
+    const ok = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(m.check.iv) }, key, unb64(m.check.ct)));
+    return ok === 'looktrain-ok';
+  }catch(e){ return false; }
+}
+async function unlockWith(pass){
+  const m = await getMeta();
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: unb64(m.salt), iterations: m.iter, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
+  if(!(await tryKey(key))) return false;
+  aesKey = key;
+  try{ localStorage.setItem(KEY_STORE, JSON.stringify({ salt: m.salt, k: b64(new Uint8Array(await crypto.subtle.exportKey('raw', key))) })); }catch(e){}
+  return true;
+}
+async function restoreKey(){
+  let saved = null;
+  try{ saved = JSON.parse(localStorage.getItem(KEY_STORE)); }catch(e){}
+  if(!saved) return false;
+  const m = await getMeta();
+  if(saved.salt !== m.salt) return false;          // password was changed since
+  const key = await crypto.subtle.importKey('raw', unb64(saved.k), { name: 'AES-GCM' }, false, ['decrypt']);
+  if(!(await tryKey(key))) return false;
+  aesKey = key;
+  return true;
+}
+
+async function loadVersion(v){
+  if(!cache[v]){
+    cache[v] = (async () => {
+      const r = await fetch(`data/${v}.enc`);
+      if(!r.ok) throw new Error(r.status);
+      const gz = await openBox(await r.json());
+      const text = await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+      return JSON.parse(text);
+    })();
+    cache[v].catch(() => { delete cache[v]; });
+  }
+  return cache[v];
+}
+
+function nowSec(){ return customSec != null ? customSec : sgNow().sec; }
+
+// ---------- where is a train at time T ----------
+function status(train, T){
+  const trips = plans[train];
+  const rec = ds.trains[train];
+  if(!trips || !trips.length) return null;
+  const first = trips[0], last = trips[trips.length - 1];
+  if(T < first.start){
+    const r0 = first.rows[0];
+    return { kind: 'before', text: r0.kind === 'depot' ? `In ${r0.code} depot` : `Stabled at ${r0.name}`,
+      sub: `Launches ${hms(first.start)} (in ${inText(first.start - T)})`, trip: first, tripIdx: 0 };
+  }
+  if(T > last.end){
+    const rl = last.rows[last.rows.length - 1];
+    return { kind: 'after', text: rl.kind === 'depot' ? `Withdrawn to ${rl.code}` : `Stabled at ${rl.name}`,
+      sub: `Arrived ${hms(last.end)}`, trip: last, tripIdx: trips.length - 1 };
+  }
+  for(let i = 0; i < trips.length; i++){
+    const tr = trips[i];
+    if(T >= tr.start && T <= tr.end){
+      const rows = tr.rows;
+      let k = rows.findIndex(r => r.t > T);
+      if(k === -1) k = rows.length - 1;
+      const next = rows[k], prev = rows[Math.max(0, k - 1)];
+      const dwell = next.t - T <= 30 || (prev.t2 && T <= prev.t2);
+      let text, pos;
+      if(k === 0 || prev === next) { text = `At ${next.name}`; pos = 0; }
+      else if(dwell){ text = `At ${next.name}`; pos = k; }
+      else { text = `Between ${prev.name} and ${next.name}`; pos = k - 1 + (T - prev.t) / (next.t - prev.t); }
+      return { kind: 'moving', text, trip: tr, tripIdx: i, next, nextIdx: k, pos, off: next.off, est: next.est || prev.est };
+    }
+    const nx = trips[i + 1];
+    if(nx && T > tr.end && T < nx.start){
+      const at = tr.rows[tr.rows.length - 1];
+      return { kind: 'layover', text: at.kind === 'depot' ? `In ${at.code} depot` : `At ${at.name}`,
+        sub: `Next: ${DIR_NAMES[nx.dir]} from ${nx.rows[0].name} at ${hms(nx.start)} (in ${inText(nx.start - T)})`,
+        trip: nx, tripIdx: i + 1, waiting: true };
+    }
+  }
+  return null;
+}
+
+function shortStatus(train, T){
+  const st = status(train, T);
+  if(!st) return '';
+  if(st.kind === 'moving'){
+    const n = st.next;
+    const tag = st.trip.dir + 'B';
+    return `${tag} → ${n.code}${st.off ? ' (off-svc)' : ''}`;
+  }
+  if(st.kind === 'before') return 'Not launched';
+  if(st.kind === 'after') return 'Withdrawn';
+  return st.text.replace('depot', '').trim();
+}
+
+// ---------- rendering ----------
+function depotCard(train){
+  const rec = ds.trains[train];
+  if(!rec) return '';
+  const L = rec.launch, W = rec.withdraw;
+  const isEcid = currentLine === 'EW' && W && W.depot === 'ECID';
+  const cell = r => r ? `
+        <div class="depot-code ${r.depot === 'ECID' && currentLine === 'EW' ? 'ecid' : ''}" style="font-size:18px;">${esc(r.depot)}</div>
+        <div class="point">${esc(r.point)}</div>
+        <div class="time">${formatTime(r.time)}</div>` : '<div class="point">—</div>';
+  return `
+    <div class="row head"><div>TRAIN</div><div>LAUNCH</div><div>WITHDRAW</div></div>
+    <div class="row">
+      <div class="depot-code">${esc(train)}</div>
+      <div>${cell(L)}</div>
+      <div>${cell(W)}</div>
+    </div>
+    ${currentLine === 'EW' && W ? `<div class="verdict ${isEcid ? 'job' : 'notjob'}">
+      <span class="dot"></span>
+      ${isEcid ? `Withdraws to ECID at ${formatTime(W.time)} - your job.` : `Withdraws to ${esc(W.depot)} at ${formatTime(W.time)} - not ECID.`}
+    </div>` : ''}`;
+}
+
+function trackHtml(trip, pos){
+  const rows = trip.rows, n = rows.length - 1 || 1;
+  const pct = i => (i / n * 100).toFixed(2) + '%';
+  return `<div class="track">
+      <div class="rail"></div>
+      <div class="done" style="width:${pct(Math.max(0, pos))}"></div>
+      ${rows.map((r, i) => `<div class="tick ${r.est ? '' : 'tp'}" style="left:${pct(i)}"></div>`).join('')}
+      <div class="train" style="left:${pct(Math.max(0, pos))}"></div>
+    </div>
+    <div class="track-ends"><span>${esc(rows[0].name)}</span><span>${esc(rows[rows.length - 1].name)}</span></div>`;
+}
+
+function stopsHtml(trip, T, nextIdx){
+  return `<table class="stops">${trip.rows.map((r, i) => {
+    const past = r.t < T && (nextIdx == null || i < nextIdx);
+    const cls = [r.est ? 'est' : '', past ? 'past' : '', i === nextIdx ? 'here' : '', r.off ? 'off' : ''].join(' ');
+    const note = r.kind === 'depot' ? 'depot' : r.est ? 'est.' : r.label;
+    return `<tr class="${cls}"><td class="t">${r.est ? '~' : ''}${hms(r.t)}</td><td class="nm">${esc(r.name)} <small>${esc(note || '')}</small></td></tr>`;
+  }).join('')}</table>`;
+}
+
+function dayHtml(train, curIdx){
+  const trips = plans[train];
+  return `<details class="day"><summary>Full day · ${trips.length} trip${trips.length === 1 ? '' : 's'} &rarr;</summary>
+    ${trips.map((tr, i) => `<details class="trip ${i === curIdx ? 'cur' : ''}">
+      <summary><span class="d">${tr.dir}</span><span class="tm">${hms(tr.start, false)}–${hms(tr.end, false)}</span>
+        <span>${esc(tr.rows[0].name)} → ${esc(tr.rows[tr.rows.length - 1].name)}</span>${tr.off ? '<span class="offtag">off-service</span>' : ''}</summary>
+      ${stopsHtml(tr, -1, null)}
+    </details>`).join('')}
+  </details>`;
+}
+
+function render(train){
+  shownTrain = train;
+  if(!ds) return;
+  const rec = ds.trains[train];
+  if(!rec && !plans[train]){
+    result.innerHTML = `<div class="error">No train numbered "${esc(train)}" in ${ds.version} (${LINE_NAMES[currentLine]}, ${ds.label}). Double-check the digits, or try the other line or day.</div>`;
+    return;
+  }
+  const T = nowSec();
+  let live = '';
+  if(!ds.trips.length){
+    live = `<div class="card"><div class="card-label"><span>Position</span></div>
+      <div class="muted">Live position isn't available for ${ds.version} yet — only its launch/withdraw tables are loaded. Send the full ${ds.label.toLowerCase()} OCC timetable report to add it.</div></div>`;
+  } else {
+    const st = status(train, T);
+    if(st){
+      const svc = st.kind === 'moving'
+        ? (st.off ? '<div class="svc off">Not in passenger service</div>' : `<div class="svc in">${DIR_NAMES[st.trip.dir]} · in passenger service</div>`)
+        : '<div class="svc idle">Not moving</div>';
+      let body = '';
+      if(st.kind === 'moving'){
+        const tr = st.trip, dest = tr.rows[tr.rows.length - 1];
+        const n = st.next;
+        body = `<div class="nextline">Next: <b>${esc(n.name)}</b> ${n.est ? '~' : ''}${hms(n.t)} · in ${inText(Math.max(0, n.t - T))}</div>
+          <div class="nextline">Terminates <b>${esc(dest.name)}</b> ${hms(dest.t)}</div>
+          ${trackHtml(tr, st.pos)}
+          ${stopsHtml(tr, T, st.nextIdx)}`;
+      } else if(st.kind === 'layover' || st.kind === 'before'){
+        body = `<div class="nextline">${esc(st.sub)}</div>${stopsHtml(st.trip, T, null)}`;
+      } else {
+        body = `<div class="nextline">${esc(st.sub)}</div>`;
+      }
+      live = `<div class="card">
+        <div class="card-label"><span>Train ${esc(train)} · ${customSec != null ? 'at ' + hms(T) : 'now ' + hms(T)}</span><span>scheduled</span></div>
+        <div class="where">${esc(st.text)}${st.est && st.kind === 'moving' ? '<small>Stations marked ~ are estimated between timing points</small>' : ''}</div>
+        ${svc}${body}
+      </div>`;
+      live += `<div class="card"><div class="card-label"><span>Timetable</span></div>${dayHtml(train, st.tripIdx)}</div>`;
+    } else {
+      live = `<div class="card"><div class="muted">Train ${esc(train)} has launch/withdraw entries but no running times in ${ds.version}.</div></div>`;
+    }
+  }
+  const openDetails = [...result.querySelectorAll('details')].map(d => d.open);
+  result.innerHTML = live + (rec ? depotCard(train) : '');
+  // keep expanded sections open across the once-a-second refresh
+  [...result.querySelectorAll('details')].forEach((d, i) => { if(openDetails[i]) d.open = true; });
+}
+
+function refreshHeader(){
+  $('title').textContent = currentLine === 'EW' ? 'EWL Train Lookup' : 'NSL Train Lookup';
+  headMeta.textContent = ds ? `${ds.version} · ${ds.label} · eff. ${ds.effective}` : '';
+  document.querySelectorAll('#lineTabs .daytab').forEach(b => b.classList.toggle('active', b.dataset.line === currentLine));
+  const today = sgNow().day;
+  document.querySelectorAll('#dayTabs .daytab').forEach(b => {
+    const v = VERSIONS[currentLine][b.dataset.day];
+    b.disabled = !v;
+    b.classList.toggle('active', b.dataset.day === currentDay);
+    b.querySelector('.sub').innerHTML = (v || 'not loaded') + (b.dataset.day === today ? '<span class="today">TODAY</span>' : '');
+  });
+  const wrongDay = customSec == null && currentDay !== today;
+  dayWarn.hidden = !wrongDay;
+  dayWarn.textContent = wrongDay ? `Showing the ${currentDay} timetable at today's time (public holidays usually run the Sunday timetable).` : '';
+  if(ds){
+    footnote.innerHTML = `<b>How to read this</b> — positions and times come from the <b>${ds.version}</b> OCC timetable (${ds.label}, effective ${ds.effective}) and show where the train is <b>scheduled</b> to be, not where it actually is: delays, holds, reformations and service changes aren't known here. Times without ~ are timing points from the report; ~ times are estimated between them by distance. "Launch" is where the service starts its day and "Withdraw" its final return to a depot (times marked "next day" are after midnight). Re-check against the current amendment leaflet before relying on it for handover decisions.`;
+  }
+}
+
+function refreshBrowse(){
+  if(!ds){ tbody.innerHTML = ''; return; }
+  const T = nowSec(), hasTrips = ds.trips.length > 0;
+  $('nowHead').style.display = hasTrips ? '' : 'none';
+  const keys = [...new Set([...Object.keys(ds.trains), ...Object.keys(plans)])].sort((a, b) => a - b);
+  browseSummary.textContent = `Browse all ${keys.length} trains →`;
+  tbody.innerHTML = keys.map(t => {
+    const r = ds.trains[t] || {};
+    const W = r.withdraw, L = r.launch;
+    const ec = currentLine === 'EW' && W && W.depot === 'ECID' ? ' class="ec"' : '';
+    return `<tr data-train="${esc(t)}"><td>${esc(t)}</td>${hasTrips ? `<td class="nowc">${esc(shortStatus(t, T))}</td>` : ''}<td class="hide-sm">${L ? esc(L.depot) : ''}</td><td${ec}>${W ? esc(W.depot) : ''}</td><td>${W ? formatTime(W.time) : ''}</td></tr>`;
+  }).join('');
+}
+
+async function switchTo(line, day){
+  currentLine = line;
+  if(!VERSIONS[line][day]) day = VERSIONS[line][sgNow().day] ? sgNow().day : 'saturday';
+  currentDay = day;
+  try{ localStorage.setItem('lookup.line', line); }catch(e){}
+  ds = null; plans = {};
+  refreshHeader();
+  result.innerHTML = '<div class="placeholder">Loading timetable…</div>';
+  const v = VERSIONS[line][day];
+  let data;
+  try{ data = await loadVersion(v); }
+  catch(e){ result.innerHTML = `<div class="error">Couldn't load ${v}. Check your connection and try again.</div>`; return; }
+  if(currentLine !== line || currentDay !== day) return;   // user switched again meanwhile
+  ds = data;
+  for(const trip of ds.trips){
+    try{ (plans[trip[0]] = plans[trip[0]] || []).push(expandTrip(line, trip)); }
+    catch(e){ console.warn('Skipped trip', trip, e); }
+  }
+  Object.values(plans).forEach(p => p.sort((a, b) => a.start - b.start));
+  refreshHeader();
+  refreshBrowse();
+  if(shownTrain && (ds.trains[shownTrain] || plans[shownTrain])) render(shownTrain);
+  else result.innerHTML = `<div class="placeholder">Enter a 3-digit train number to see where it should be ${customSec == null ? 'right now' : 'at ' + hms(customSec)}, its next stops, and where it launches from and withdraws to.</div>`;
+}
+
+function doLookup(){
+  const val = input.value.trim().replace(/^0+/, '') || input.value.trim();
+  if(!val) return;
+  render(val);
+}
+
+// ---------- events ----------
+$('lineTabs').addEventListener('click', e => { const b = e.target.closest('.daytab'); if(b) switchTo(b.dataset.line, currentDay); });
+$('dayTabs').addEventListener('click', e => { const b = e.target.closest('.daytab'); if(b && !b.disabled) switchTo(currentLine, b.dataset.day); });
+form.addEventListener('submit', e => { e.preventDefault(); doLookup(); });
+input.addEventListener('input', () => { input.value = input.value.replace(/[^0-9]/g, ''); });
+tbody.addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-train]');
+  if(!tr) return;
+  input.value = tr.dataset.train;
+  render(tr.dataset.train);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+timeInput.addEventListener('change', () => {
+  if(!timeInput.value){ goLive(); return; }
+  const [h, m, s] = timeInput.value.split(':').map(Number);
+  let sec = h * 3600 + m * 60 + (s || 0);
+  if(sec < 4 * 3600) sec += 86400;   // 00:00–03:59 belongs to the previous service day
+  customSec = sec;
+  liveTag.style.visibility = 'hidden';
+  tick();
+});
+function goLive(){ customSec = null; liveTag.style.visibility = ''; tick(); }
+$('nowBtn').addEventListener('click', goLive);
+
+let lastBrowse = 0;
+function tick(){
+  const T = nowSec();
+  if(document.activeElement !== timeInput) timeInput.value = hms(T);
+  refreshHeader();
+  if(ds && shownTrain) render(shownTrain);
+  if(ds && (customSec != null || Date.now() - lastBrowse > 10000 || !lastBrowse)){ refreshBrowse(); lastBrowse = Date.now(); }
+}
+
+// ---------- start ----------
+let startLine = 'EW';
+try{ startLine = localStorage.getItem('lookup.line') || 'EW'; }catch(e){}
+if(!VERSIONS[startLine]) startLine = 'EW';
+function start(){
+  document.body.classList.remove('locked');
+  switchTo(startLine, sgNow().day).then(tick);
+}
+setInterval(() => { if(customSec == null && aesKey) tick(); }, 1000);
+
+const lockMsg = $('lockMsg');
+$('lockForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  lockMsg.className = ''; lockMsg.textContent = 'Checking…';
+  $('unlockBtn').disabled = true;
+  try{
+    if(await unlockWith($('lockPass').value)){ lockMsg.textContent = ''; $('lockPass').value = ''; start(); }
+    else { lockMsg.className = 'err'; lockMsg.textContent = 'Wrong password.'; }
+  }catch(err){
+    lockMsg.className = 'err';
+    lockMsg.textContent = navigator.onLine ? 'Could not unlock on this browser.' : 'You are offline — connect once to unlock.';
+  }finally{ $('unlockBtn').disabled = false; }
+});
+$('lockBtn').addEventListener('click', () => {
+  try{ localStorage.removeItem(KEY_STORE); }catch(e){}
+  location.reload();
+});
+restoreKey().then(ok => { if(ok) start(); else $('lockPass').focus(); })
+  .catch(() => { lockMsg.className = 'err'; lockMsg.textContent = 'Could not load the site data. Check your connection and reload.'; });
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>

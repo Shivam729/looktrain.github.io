@@ -2,942 +2,398 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MRT Train Lookup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LookTrain · Live Network</title>
+<meta name="description" content="Where every EWL and NSL train is scheduled to be, right now.">
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="theme-color" content="#0b0f10">
+<meta name="theme-color" content="#03070d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   :root{
-    --bg: #0b0f10;
-    --panel: #12181a;
-    --amber: #ffb100;
-    --amber-dim: #7a5700;
-    --green: #3ddc84;
-    --green-dim: #164a2e;
-    --grey: #7d8a8c;
-    --line: #263133;
+    --bg:#03070d;
+    --ink:rgba(255,255,255,.94);
+    --ink-2:rgba(235,242,255,.62);
+    --ink-3:rgba(235,242,255,.38);
+    --ew:#35e27a; --ns:#ff5a36; --amber:#ffb100; --ecid:#35e27a;
+    --r:26px;
+    --safe-b:env(safe-area-inset-bottom, 0px);
+    --safe-t:env(safe-area-inset-top, 0px);
+    --font:-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+    --ease:cubic-bezier(.2,.9,.25,1.15);
+    --ease-out:cubic-bezier(.16,1,.3,1);
   }
-  *{box-sizing:border-box;}
-  body{
-    margin:0;
-    background:var(--bg);
-    color:var(--amber);
-    font-family: 'Courier New', 'JetBrains Mono', monospace;
-    min-height:100vh;
-    display:flex;
-    justify-content:center;
-    padding:32px 16px 60px;
-  }
-  .board{
-    width:100%;
-    max-width:640px;
-  }
-  .board-head{
-    display:flex;
-    justify-content:space-between;
-    align-items:baseline;
-    border-bottom:2px solid var(--line);
-    padding-bottom:10px;
-    margin-bottom:16px;
-    letter-spacing:1px;
-  }
-  .board-head h1{
-    font-size:15px;
-    margin:0;
-    color:var(--amber);
-    text-transform:uppercase;
-    font-weight:700;
-  }
-  .board-head span{
-    font-size:11px;
-    color:var(--grey);
-  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--ink); font-family:var(--font); }
+  body{ font-feature-settings:"tnum" 1, "ss01" 1; -webkit-font-smoothing:antialiased; }
+  button{ font:inherit; color:inherit; }
 
-  .daytabs{
-    display:flex;
-    gap:6px;
-    margin-bottom:18px;
-  }
-  .daytab{
-    flex:1;
-    background:var(--panel);
-    border:1px solid var(--line);
-    color:var(--grey);
-    font-family:inherit;
-    font-size:12px;
-    letter-spacing:0.5px;
-    text-transform:uppercase;
-    padding:10px 6px;
-    cursor:pointer;
-    border-radius:2px;
-    text-align:center;
-  }
-  .daytab.active{
-    color:var(--amber);
-    border-color:var(--amber-dim);
-    background:#1a1400;
-  }
-  .daytab:hover{ color:var(--amber); }
-  .daytab .sub{
-    display:block;
-    font-size:9px;
-    color:var(--grey);
-    margin-top:3px;
-    text-transform:none;
-    letter-spacing:0;
-  }
+  #stage{ position:fixed; inset:0; }
+  #stage canvas{ display:block; touch-action:none; }
+  .vignette{ position:fixed; inset:0; pointer-events:none;
+    background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%),
+                linear-gradient(to bottom, rgba(3,7,13,.55), transparent 18%, transparent 78%, rgba(3,7,13,.6)); }
 
-  form{
-    display:flex;
-    gap:8px;
-    margin-bottom:22px;
+  /* ================= Liquid Glass ================= */
+  .glass{
+    position:relative; isolation:isolate;
+    border-radius:var(--r);
+    background:
+      linear-gradient(165deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.05) 38%, rgba(255,255,255,.03) 62%, rgba(255,255,255,.09) 100%),
+      rgba(10,16,28,.38);                               /* adaptive tint keeps text legible over bright glow */
+    -webkit-backdrop-filter: blur(26px) saturate(185%) contrast(1.05);
+    backdrop-filter: blur(26px) saturate(185%) contrast(1.05);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.42),            /* top rim light */
+      inset 0 -1px 0 rgba(255,255,255,.07),
+      inset 1px 0 0 rgba(255,120,140,.10),            /* faint dispersion on the edges */
+      inset -1px 0 0 rgba(110,170,255,.14),
+      inset 0 0 30px rgba(255,255,255,.035),
+      0 24px 60px -18px rgba(0,0,0,.7),
+      0 2px 6px rgba(0,0,0,.25);
   }
-  input[type=text]{
-    flex:1;
-    background:var(--panel);
-    border:1px solid var(--line);
-    color:var(--amber);
-    font-family:inherit;
-    font-size:28px;
-    letter-spacing:6px;
-    padding:12px 16px;
-    border-radius:2px;
-    outline:none;
+  .glass::before{      /* refractive rim */
+    content:""; position:absolute; inset:0; border-radius:inherit; padding:1.2px; pointer-events:none; z-index:-1;
+    background:linear-gradient(135deg, rgba(255,255,255,.7), rgba(255,255,255,.08) 28%, rgba(255,255,255,0) 50%, rgba(255,255,255,.06) 72%, rgba(255,255,255,.4));
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;
   }
-  input[type=text]::placeholder{
-    color:#4a4a3a;
-    letter-spacing:2px;
-    font-size:16px;
+  .glass::after{       /* specular highlight that tracks the pointer */
+    content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background:radial-gradient(360px circle at var(--mx, 30%) var(--my, -30%), rgba(255,255,255,.16), rgba(255,255,255,.04) 35%, transparent 60%);
+    mix-blend-mode:screen; opacity:.9;
   }
-  input[type=text]:focus{
-    border-color:var(--amber-dim);
-  }
-  button{
-    background:var(--amber);
-    color:#1a1200;
-    border:none;
-    font-family:inherit;
-    font-weight:700;
-    font-size:14px;
-    letter-spacing:1px;
-    padding:0 20px;
-    border-radius:2px;
-    cursor:pointer;
-    text-transform:uppercase;
-  }
-  button:hover{ background:#ffc733; }
-  button:focus-visible, input:focus-visible{ outline:2px solid var(--green); outline-offset:2px; }
+  .glass.thin{ --r:999px; }
 
-  #result{ min-height:120px; }
+  .gbtn{
+    position:relative; border:0; cursor:pointer; border-radius:999px; padding:9px 14px; font-size:13px; font-weight:600; letter-spacing:.1px;
+    background:linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,.07));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.45), inset 0 -1px 0 rgba(255,255,255,.06), 0 4px 14px -4px rgba(0,0,0,.5);
+    transition:transform .35s var(--ease), background .2s, box-shadow .2s;
+    text-shadow:0 1px 2px rgba(0,0,0,.35);
+  }
+  .gbtn.on, #play, #unlockBtn, #liveBtn.on{ text-shadow:none; }
+  .gbtn:hover{ background:linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.1)); }
+  .gbtn:active{ transform:scale(.94); }
+  .gbtn.icon{ width:34px; height:34px; padding:0; display:grid; place-items:center; font-size:13px; }
+  .gbtn.on{ background:linear-gradient(180deg, rgba(255,255,255,.95), rgba(225,235,255,.8)); color:#07111f; }
+  :focus-visible{ outline:2px solid rgba(140,200,255,.9); outline-offset:2px; }
 
-  .row{
-    display:grid;
-    grid-template-columns:110px 1fr 1fr;
-    border:1px solid var(--line);
-    border-bottom:none;
-  }
-  .row:last-child{ border-bottom:1px solid var(--line); }
-  .row > div{
-    padding:14px 14px;
-    border-right:1px solid var(--line);
-  }
-  .row > div:last-child{ border-right:none; }
-  .row.head{
-    background:#0e1415;
-    color:var(--grey);
-    font-size:10px;
-    letter-spacing:1px;
-    text-transform:uppercase;
-    padding:8px 14px;
-  }
-  .row.head > div{ padding:0; border:none; }
-  .depot-code{
-    font-size:26px;
-    font-weight:700;
-    letter-spacing:1px;
-  }
-  .depot-code.ecid{ color:var(--green); }
-  .point, .time{
-    font-size:14px;
-    color:#d9c98a;
-  }
-  .time{ color:var(--amber); }
+  /* segmented control with a sliding liquid lens */
+  .seg{ position:relative; display:flex; padding:4px; gap:0; border-radius:999px; background:rgba(0,0,0,.28);
+        box-shadow:inset 0 1px 3px rgba(0,0,0,.45), inset 0 -1px 0 rgba(255,255,255,.08); }
+  .seg button{ position:relative; z-index:1; flex:1; border:0; background:none; cursor:pointer; padding:8px 14px; border-radius:999px;
+               font-size:13px; font-weight:600; color:var(--ink-2); transition:color .3s; white-space:nowrap; }
+  .seg button.on{ color:var(--ink); }
+  .seg button i{ position:absolute; top:5px; right:7px; width:5px; height:5px; border-radius:50%; background:#5dffa0; box-shadow:0 0 8px #5dffa0; }
+  .seg .lens{ position:absolute; z-index:0; top:4px; bottom:4px; left:4px; border-radius:999px;
+    background:linear-gradient(180deg, rgba(255,255,255,.3), rgba(255,255,255,.1));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.6), inset 0 -1px 0 rgba(255,255,255,.1), 0 6px 18px -6px rgba(0,0,0,.6);
+    -webkit-backdrop-filter:blur(6px) saturate(160%); backdrop-filter:blur(6px) saturate(160%);
+    transition:transform .55s var(--ease), width .45s var(--ease-out); }
+  .seg.small button{ padding:7px 10px; font-size:12px; }
 
-  .verdict{
-    margin-top:18px;
-    padding:16px 18px;
-    border-radius:2px;
-    font-size:15px;
-    letter-spacing:0.5px;
-    font-weight:700;
-    display:flex;
-    align-items:center;
-    gap:10px;
-    animation: flap .35s ease;
-  }
-  .verdict.job{
-    background:var(--green-dim);
-    color:var(--green);
-    border:1px solid var(--green);
-  }
-  .verdict.notjob{
-    background:#1a1a1a;
-    color:var(--grey);
-    border:1px solid var(--line);
-  }
-  .dot{
-    width:10px;height:10px;border-radius:50%;
-    background:currentColor;
-    box-shadow:0 0 8px currentColor;
-    flex-shrink:0;
-  }
-  @keyframes flap{
-    from{ opacity:0; transform: translateY(-6px); }
-    to{ opacity:1; transform:translateY(0); }
-  }
+  .pill{ display:inline-flex; align-items:center; gap:6px; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.6px;
+         background:color-mix(in srgb, var(--c) 30%, transparent); color:#fff; box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c) 70%, transparent), 0 0 18px -4px var(--c); }
+  .pill.ghost{ background:rgba(255,255,255,.08); box-shadow:inset 0 0 0 1px rgba(255,255,255,.15); color:var(--ink-2); font-weight:600; letter-spacing:.2px; }
 
-  .placeholder, .error{
-    color:var(--grey);
-    font-size:13px;
-    line-height:1.6;
-    padding:20px 4px;
-  }
-  .error{ color:#ff6b5e; }
+  /* ================= Layout ================= */
+  .ui{ transition:opacity .6s var(--ease-out), transform .6s var(--ease-out); }
+  body.locked .ui, body.booting .ui{ opacity:0; pointer-events:none; transform:translateY(10px); }
 
-  .footnote{
-    margin-top:34px;
-    padding-top:14px;
-    border-top:1px solid var(--line);
-    color:var(--grey);
-    font-size:11px;
-    line-height:1.7;
-  }
-  .footnote b{ color:#a8a8a8; }
+  .topbar{ position:fixed; top:calc(14px + var(--safe-t)); left:16px; right:16px; display:flex; align-items:center; gap:14px; padding:8px 8px 8px 16px; --r:22px; z-index:5; }
+  .brand{ display:flex; align-items:center; gap:10px; min-width:0; }
+  .brand svg{ flex:none; filter:drop-shadow(0 0 10px rgba(80,255,160,.5)); }
+  .brand b{ font-size:16px; letter-spacing:-.2px; font-weight:750; }
+  .brand small{ display:block; font-size:11px; color:var(--ink-3); font-weight:500; letter-spacing:.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .topbar .seg{ margin-left:auto; }
+  .clock{ display:flex; flex-direction:column; align-items:flex-end; padding:4px 10px 4px 8px; min-width:112px; }
+  .clock strong{ font-size:22px; font-weight:700; letter-spacing:-.3px; line-height:1.05; font-variant-numeric:tabular-nums; }
+  .clock span{ font-size:10px; letter-spacing:1.4px; color:var(--amber); font-weight:700; display:flex; align-items:center; gap:6px; }
+  .clock.live span{ color:#5dffa0; }
+  .clock.live span::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; box-shadow:0 0 10px currentColor; animation:pulse 1.6s infinite; }
+  @keyframes pulse{ 50%{ opacity:.35; } }
 
-  .browse{
-    margin-top:10px;
-  }
-  .browse summary{
-    cursor:pointer;
-    color:var(--grey);
-    font-size:12px;
-    letter-spacing:0.5px;
-    padding:4px 0;
-  }
-  .browse table{
-    width:100%;
-    border-collapse:collapse;
-    margin-top:10px;
-    font-size:12px;
-  }
-  .browse th{
-    text-align:left;
-    color:var(--grey);
-    font-weight:400;
-    border-bottom:1px solid var(--line);
-    padding:6px 8px;
-  }
-  .browse td{
-    padding:6px 8px;
-    border-bottom:1px solid #1a2224;
-    color:#c9c9b8;
-  }
-  .browse tr:hover td{ background:#0f1516; }
-  .browse .ec{ color:var(--green); font-weight:700; }
+  .net{ position:fixed; top:calc(92px + var(--safe-t)); left:16px; width:250px; padding:14px; z-index:4; }
+  .net h3{ margin:0 0 10px; font-size:11px; letter-spacing:1.4px; color:var(--ink-3); font-weight:700; text-transform:uppercase; display:flex; justify-content:space-between; }
+  .net h3 span{ letter-spacing:.3px; text-transform:none; font-weight:600; }
+  .lines{ display:grid; gap:8px; }
+  .lines button{ display:flex; align-items:center; gap:12px; width:100%; border:0; cursor:pointer; text-align:left; padding:10px 12px; border-radius:16px;
+    background:rgba(255,255,255,.05); box-shadow:inset 0 0 0 1px rgba(255,255,255,.08); transition:opacity .3s, transform .35s var(--ease); }
+  .lines button:active{ transform:scale(.97); }
+  .lines button:not(.on){ opacity:.4; }
+  .lines .sw{ width:10px; height:34px; border-radius:6px; background:var(--c); box-shadow:0 0 16px var(--c); }
+  .lines b{ font-size:26px; font-weight:750; letter-spacing:-.5px; line-height:1; min-width:36px; }
+  .lines .t{ display:flex; flex-direction:column; font-size:12px; font-weight:650; }
+  .lines small{ font-size:11px; color:var(--ink-2); font-weight:500; }
+  .net .row{ display:flex; gap:8px; margin-top:10px; }
+  .net .row .gbtn{ flex:1; }
+  .net .foot{ margin-top:10px; font-size:10.5px; color:var(--ink-3); line-height:1.5; }
+  .net .foot a, .net .foot button{ color:var(--ink-2); background:none; border:0; padding:0; cursor:pointer; text-decoration:underline; font-size:10.5px; }
+  #dayWarn{ margin-top:10px; font-size:11px; color:var(--amber); line-height:1.45; }
 
-  #trainInput{ min-width:0; width:100%; }
-  .linetabs{ display:flex; gap:6px; margin-bottom:8px; }
-  .linetab{ flex:1; }
-  .linetab .sub{ font-size:9px; }
-  .daytab:disabled{ opacity:.35; cursor:not-allowed; }
-  .daytab .today{
-    display:inline-block;
-    margin-left:6px;
-    font-size:8px;
-    color:var(--green);
-    border:1px solid var(--green-dim);
-    padding:0 4px;
-    vertical-align:middle;
-  }
+  /* time machine */
+  .dock{ position:fixed; left:50%; bottom:calc(18px + var(--safe-b)); transform:translateX(calc(-50% - 210px)); width:min(620px, calc(100vw - 520px)); display:flex; align-items:center; gap:10px; padding:8px 10px; --r:999px; z-index:4; }
+  body.locked .dock, body.booting .dock{ transform:translateX(calc(-50% - 210px)) translateY(10px); }
+  .dock .gbtn.icon{ width:40px; height:40px; font-size:14px; flex:none; }
+  #play{ background:linear-gradient(180deg,#fff,#dfe8ff); color:#07111f; }
+  .track{ position:relative; flex:1; height:40px; display:flex; align-items:center; }
+  .track .rail{ position:absolute; left:0; right:0; height:6px; border-radius:6px; background:rgba(0,0,0,.35); box-shadow:inset 0 1px 2px rgba(0,0,0,.5); overflow:hidden; }
+  #scrubFill{ position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg, rgba(93,255,160,.3), rgba(93,255,160,.9)); box-shadow:0 0 12px rgba(93,255,160,.6); }
+  .track .hours{ position:absolute; left:0; right:0; bottom:-3px; display:flex; justify-content:space-between; font-size:9px; color:var(--ink-3); pointer-events:none; }
+  #scrub{ position:relative; width:100%; margin:0; background:none; -webkit-appearance:none; appearance:none; height:40px; cursor:pointer; }
+  #scrub::-webkit-slider-runnable-track{ height:6px; background:none; }
+  #scrub::-moz-range-track{ height:6px; background:none; }
+  #scrub::-webkit-slider-thumb{ -webkit-appearance:none; width:26px; height:26px; margin-top:-10px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #fff, #dfe9ff 45%, #b9c9e6); box-shadow:0 0 0 1px rgba(255,255,255,.6), 0 4px 14px rgba(0,0,0,.55), 0 0 18px rgba(93,255,160,.45); }
+  #scrub::-moz-range-thumb{ width:24px; height:24px; border:0; border-radius:50%; background:radial-gradient(circle at 35% 30%, #fff, #dfe9ff 45%, #b9c9e6); box-shadow:0 4px 14px rgba(0,0,0,.55); }
+  #speeds{ flex:none; }
+  #speeds button{ padding:7px 9px; font-size:12px; }
+  #liveBtn{ flex:none; font-size:12px; padding:9px 12px; }
+  #liveBtn.on{ background:linear-gradient(180deg, rgba(93,255,160,.9), rgba(40,200,110,.85)); color:#021a0c; box-shadow:0 0 22px -2px rgba(93,255,160,.7), inset 0 1px 0 rgba(255,255,255,.6); }
 
-  .clock{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    margin:-8px 0 18px;
-    font-size:12px;
-    color:var(--grey);
-    flex-wrap:wrap;
-  }
-  .clock input[type=time]{
-    background:var(--panel);
-    border:1px solid var(--line);
-    color:var(--amber);
-    font-family:inherit;
-    font-size:14px;
-    padding:6px 8px;
-    border-radius:2px;
-  }
-  .clock button{ font-size:11px; padding:7px 10px; }
-  .clock .live{ color:var(--green); display:flex; align-items:center; gap:6px; }
-  .clock .live .dot{ width:7px; height:7px; box-shadow:none; }
-  .clock .warn{ color:var(--amber); width:100%; }
+  /* sheet: right panel on desktop, bottom sheet on phones */
+  .sheet{ position:fixed; top:calc(92px + var(--safe-t)); right:16px; bottom:calc(18px + var(--safe-b)); width:400px; display:flex; flex-direction:column; z-index:5; overflow:hidden; }
+  #grab{ display:none; }
+  #search{ display:flex; gap:8px; padding:14px 14px 10px; }
+  #search .field{ position:relative; flex:1; }
+  #search .field svg{ position:absolute; left:14px; top:50%; transform:translateY(-50%); opacity:.55; }
+  #q{ width:100%; border:0; outline:0; color:var(--ink); font:inherit; font-size:22px; font-weight:650; letter-spacing:3px; padding:11px 14px 11px 42px; border-radius:18px;
+      background:rgba(0,0,0,.3); box-shadow:inset 0 1px 3px rgba(0,0,0,.5), inset 0 -1px 0 rgba(255,255,255,.08), 0 0 0 1px rgba(255,255,255,.06); transition:box-shadow .3s; }
+  #q::placeholder{ color:var(--ink-3); letter-spacing:.3px; font-size:15px; font-weight:500; }
+  #q:focus{ box-shadow:inset 0 1px 3px rgba(0,0,0,.5), 0 0 0 1.5px rgba(140,200,255,.7), 0 0 24px -4px rgba(140,200,255,.5); }
+  #search .gbtn{ padding:0 18px; font-size:14px; }
+  #card{ flex:1; overflow:auto; padding:4px 16px 18px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.2) transparent; }
 
-  .card{
-    border:1px solid var(--line);
-    background:var(--panel);
-    padding:16px;
-    margin-bottom:14px;
-    border-radius:2px;
-  }
-  .card-label{
-    font-size:10px;
-    letter-spacing:1px;
-    text-transform:uppercase;
-    color:var(--grey);
-    margin-bottom:10px;
-    display:flex;
-    justify-content:space-between;
-    gap:8px;
-  }
-  .where{ font-size:22px; font-weight:700; line-height:1.25; margin-bottom:6px; }
-  .where small{ display:block; font-size:12px; font-weight:400; color:var(--grey); margin-top:4px; }
-  .svc{ font-size:12px; margin-bottom:12px; }
-  .svc.in{ color:var(--green); }
-  .svc.off{ color:#ff8a5c; }
-  .svc.idle{ color:var(--grey); }
-  .nextline{ font-size:14px; color:#d9c98a; margin-bottom:4px; }
-  .nextline b{ color:var(--amber); }
+  .hint{ color:var(--ink-2); font-size:13px; margin:6px 2px 14px; line-height:1.5; }
+  .grp{ margin-bottom:16px; }
+  .grp-h{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-2); margin-bottom:10px; font-weight:600; }
+  .chips{ display:grid; grid-template-columns:repeat(auto-fill, minmax(76px, 1fr)); gap:8px; }
+  .tchip{ border:0; cursor:pointer; display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:9px 10px 8px; border-radius:14px; text-align:left;
+    background:linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.03)); box-shadow:inset 0 1px 0 rgba(255,255,255,.2), inset 3px 0 0 var(--c);
+    transition:transform .35s var(--ease), background .2s; }
+  .tchip:hover{ background:linear-gradient(180deg, rgba(255,255,255,.17), rgba(255,255,255,.05)); }
+  .tchip:active{ transform:scale(.94); }
+  .tchip b{ font-size:17px; font-weight:750; }
+  .tchip small{ font-size:10.5px; color:var(--ink-2); white-space:nowrap; }
+  .tchip.off{ box-shadow:inset 0 1px 0 rgba(255,255,255,.2), inset 3px 0 0 var(--amber); }
+  .tchip.idle{ opacity:.6; }
 
-  .track{
-    position:relative;
-    height:28px;
-    margin:16px 10px 4px;
-  }
-  .track .rail{ position:absolute; left:0; right:0; top:13px; height:2px; background:var(--line); }
-  .track .done{ position:absolute; left:0; top:13px; height:2px; background:var(--amber-dim); }
-  .track .tick{ position:absolute; top:9px; width:2px; height:10px; background:var(--line); }
-  .track .tick.tp{ background:var(--grey); }
-  .track .train{
-    position:absolute; top:6px; width:16px; height:16px; margin-left:-8px;
-    background:var(--amber); border-radius:50%;
-    box-shadow:0 0 10px var(--amber);
-  }
-  .track-ends{ display:flex; justify-content:space-between; font-size:11px; color:var(--grey); }
+  .c-head{ display:flex; align-items:center; gap:14px; margin:4px 0 8px; }
+  .c-num{ font-size:56px; font-weight:800; letter-spacing:-2px; line-height:.95;
+          background:linear-gradient(180deg, #fff 30%, color-mix(in srgb, var(--c) 70%, #fff)); -webkit-background-clip:text; background-clip:text; color:transparent;
+          filter:drop-shadow(0 0 18px color-mix(in srgb, var(--c) 55%, transparent)); }
+  .c-meta{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:1; }
+  .c-state{ width:100%; font-size:12px; font-weight:600; display:flex; align-items:center; gap:7px; }
+  .c-state::before{ content:""; width:7px; height:7px; border-radius:50%; background:currentColor; box-shadow:0 0 10px currentColor; }
+  .c-state.svc{ color:#5dffa0; } .c-state.off{ color:var(--amber); } .c-state.idle{ color:var(--ink-2); }
+  .c-head .gbtn.icon{ align-self:flex-start; }
+  .c-where{ font-size:22px; font-weight:700; letter-spacing:-.4px; line-height:1.2; margin:6px 0 14px; }
+  .c-next{ display:grid; grid-template-columns:1fr auto; gap:10px; margin-bottom:14px; }
+  .c-next > div{ padding:12px 14px; border-radius:18px; background:rgba(0,0,0,.25); box-shadow:inset 0 1px 0 rgba(255,255,255,.08), inset 0 0 0 1px rgba(255,255,255,.05); min-width:0; }
+  .c-next .wide{ grid-column:1 / -1; }
+  .c-next label{ display:block; font-size:10px; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-3); font-weight:700; margin-bottom:4px; }
+  .c-next strong{ display:block; font-size:17px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .c-next .wide strong{ white-space:normal; font-size:15px; line-height:1.35; }
+  .c-next span{ font-size:12px; color:var(--ink-2); }
+  .c-next .cd{ text-align:right; }
+  .c-next .cd strong{ font-size:26px; letter-spacing:-.6px; color:#fff; text-shadow:0 0 20px rgba(140,200,255,.5); }
+  .c-prog{ margin:0 2px 14px; --c:#5dffa0; }
+  .c-prog .bar{ position:relative; height:6px; border-radius:6px; background:rgba(0,0,0,.35); box-shadow:inset 0 1px 2px rgba(0,0,0,.5); }
+  .c-prog .bar i{ position:absolute; left:0; top:0; bottom:0; border-radius:6px; background:linear-gradient(90deg, color-mix(in srgb, var(--c) 30%, transparent), var(--c)); box-shadow:0 0 12px var(--c); transition:width .25s linear; }
+  .c-prog .bar em{ position:absolute; top:50%; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%; background:#fff; box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 45%, transparent), 0 0 16px var(--c); transition:left .25s linear; }
+  .c-prog .ends{ display:flex; justify-content:space-between; gap:10px; margin-top:8px; font-size:11px; color:var(--ink-2); }
+  .c-actions{ display:flex; gap:8px; margin-bottom:14px; }
+  .c-actions .gbtn{ flex:1; }
+  #cTabs{ margin-bottom:12px; }
 
-  .stops{ width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
-  .stops td{ padding:5px 6px; border-bottom:1px solid #1a2224; color:#c9c9b8; vertical-align:top; }
-  .stops td.t{ width:88px; color:var(--amber); white-space:nowrap; }
-  .stops tr.est td.t{ color:#b58a2a; }
-  .stops tr.past td{ color:#4f5a5c; }
-  .stops tr.here td{ background:#1a1400; }
-  .stops td.nm small{ color:var(--grey); font-size:11px; }
-  .stops tr.off td.nm{ color:#ff8a5c; }
-  .muted{ color:var(--grey); font-size:12px; line-height:1.6; }
+  .stops{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  .stops td{ padding:6px 4px; vertical-align:middle; }
+  .stops td.t{ width:78px; color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .stops tr.est td.t{ color:var(--ink-2); font-weight:500; }
+  .stops td.dot{ width:18px; position:relative; }
+  .stops td.dot i{ display:block; width:9px; height:9px; margin:auto; border-radius:50%; background:rgba(255,255,255,.85); box-shadow:0 0 8px rgba(255,255,255,.4); position:relative; z-index:1; }
+  .stops td.dot::before{ content:""; position:absolute; left:50%; top:0; bottom:0; width:2px; margin-left:-1px; background:rgba(255,255,255,.14); }
+  .stops tr.est td.dot i{ width:6px; height:6px; background:rgba(255,255,255,.45); box-shadow:none; }
+  .stops td.nm small{ color:var(--ink-3); font-size:11px; margin-left:4px; }
+  .stops tr.past td{ opacity:.35; }
+  .stops tr.here td{ background:rgba(140,200,255,.12); }
+  .stops tr.here td:first-child{ border-radius:10px 0 0 10px; } .stops tr.here td:last-child{ border-radius:0 10px 10px 0; }
+  .stops tr.here td.dot i{ background:#5dffa0; box-shadow:0 0 12px #5dffa0; width:11px; height:11px; }
+  .stops tr.off td.nm{ color:#ffd07a; }
+  .stops.folded tr.early{ display:none; }
+  .gbtn.earlier{ width:100%; margin-bottom:8px; font-size:12px; padding:8px; color:var(--ink-2); }
+  .trips .trip{ border-radius:14px; background:rgba(0,0,0,.18); margin-bottom:8px; padding:4px 8px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.05); }
+  .trips .trip.cur{ box-shadow:inset 0 0 0 1px rgba(140,200,255,.4); }
+  .trips summary{ list-style:none; cursor:pointer; display:flex; gap:10px; align-items:baseline; padding:8px 4px; font-size:13px; }
+  .trips summary::-webkit-details-marker{ display:none; }
+  .trips summary b{ width:14px; } .trips .tm{ color:var(--ink); font-weight:600; white-space:nowrap; } .trips .rt{ color:var(--ink-2); flex:1; }
+  .trips summary em{ color:var(--amber); font-size:11px; font-style:normal; }
+  .deps{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .dep{ padding:14px; border-radius:18px; background:rgba(0,0,0,.25); box-shadow:inset 0 1px 0 rgba(255,255,255,.08); display:flex; flex-direction:column; gap:2px; }
+  .dep label{ font-size:10px; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-3); font-weight:700; }
+  .dep strong{ font-size:30px; font-weight:800; letter-spacing:-.8px; }
+  .dep strong.ecid{ color:var(--ecid); text-shadow:0 0 20px rgba(53,226,122,.5); }
+  .dep span{ font-size:12.5px; color:var(--ink-2); } .dep .tm{ color:var(--ink); font-weight:650; font-size:15px; }
+  .dep small{ color:var(--ink-3); }
+  .verdict{ margin-top:12px; padding:14px 16px; border-radius:18px; display:flex; gap:10px; align-items:center; font-weight:700; font-size:14px;
+            background:rgba(255,255,255,.06); color:var(--ink-2); box-shadow:inset 0 0 0 1px rgba(255,255,255,.08); }
+  .verdict i{ width:9px; height:9px; border-radius:50%; background:currentColor; box-shadow:0 0 10px currentColor; flex:none; }
+  .verdict.job{ background:rgba(53,226,122,.14); color:#5dffa0; box-shadow:inset 0 0 0 1px rgba(53,226,122,.5), 0 0 30px -8px rgba(53,226,122,.6); }
+  .muted{ color:var(--ink-2); font-size:13px; }
 
-  details.day{ margin-top:4px; }
-  details.day summary{ cursor:pointer; color:var(--grey); font-size:12px; letter-spacing:.5px; padding:4px 0; }
-  .trip{ border-top:1px solid #1a2224; padding:8px 0; font-size:13px; }
-  .trip summary{ cursor:pointer; list-style:none; display:flex; gap:10px; align-items:baseline; color:#c9c9b8; }
-  .trip summary::-webkit-details-marker{ display:none; }
-  .trip .d{ color:var(--amber); width:18px; font-weight:700; }
-  .trip .tm{ color:var(--amber); white-space:nowrap; }
-  .trip.cur summary{ color:var(--amber); }
-  .trip .offtag{ color:#ff8a5c; font-size:11px; }
+  /* 3D labels */
+  .labels{ position:fixed !important; inset:0; pointer-events:none; }
+  .st-label{ display:flex; flex-direction:column; align-items:center; gap:1px; transform:translateY(-6px); pointer-events:none; transition:opacity .3s; }
+  .st-label b{ font-size:9.5px; font-weight:750; letter-spacing:.8px; color:#fff; padding:2px 6px; border-radius:6px;
+    background:rgba(8,14,24,.55); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c, #9cf) 55%, transparent); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+  .st-label span{ font-size:10px; color:var(--ink-2); text-shadow:0 1px 4px #000; white-space:nowrap; display:none; }
+  .st-label.depot b{ box-shadow:inset 0 0 0 1px rgba(127,182,255,.7); color:#bcd8ff; }
+  .labels[data-zoom="far"] .st-label:not(.major){ opacity:0; }
+  .labels[data-zoom="near"] .st-label span{ display:block; }
+  .labels[data-zoom="mid"] .st-label.major span{ display:block; }
+  .train-tag{ font-size:13px; font-weight:800; letter-spacing:.5px; color:#fff; padding:4px 10px; border-radius:999px; transform:translateY(-10px);
+    background:linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.1)); -webkit-backdrop-filter:blur(10px) saturate(180%); backdrop-filter:blur(10px) saturate(180%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.6), 0 0 0 1px color-mix(in srgb, var(--c) 80%, transparent), 0 0 24px -2px var(--c); }
+  .train-tag.hover{ font-size:11px; padding:3px 8px; opacity:.9; }
 
-  .browse .nowc{ color:#d9c98a; }
+  /* lock */
+  .lock{ position:fixed; inset:0; display:grid; place-items:center; z-index:10; padding:20px; pointer-events:none; opacity:0; transition:opacity .6s var(--ease-out); }
+  body.locked .lock{ opacity:1; pointer-events:auto; }
+  #lockCard{ width:min(380px, 100%); padding:30px 26px 24px; text-align:center; --r:32px; transform:scale(.96); transition:transform .7s var(--ease); }
+  body.locked #lockCard{ transform:none; }
+  #lockCard h1{ margin:14px 0 6px; font-size:28px; letter-spacing:-.8px; font-weight:800; }
+  #lockCard p{ margin:0 0 20px; color:var(--ink-2); font-size:14px; line-height:1.5; }
+  #lockForm{ display:flex; flex-direction:column; gap:10px; }
+  #lockPass{ border:0; outline:0; color:var(--ink); font:inherit; font-size:18px; text-align:center; letter-spacing:3px; padding:14px; border-radius:18px;
+    background:rgba(0,0,0,.35); box-shadow:inset 0 1px 3px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.08); }
+  #lockPass:focus{ box-shadow:inset 0 1px 3px rgba(0,0,0,.5), 0 0 0 1.5px rgba(140,200,255,.7), 0 0 26px -4px rgba(140,200,255,.5); }
+  #unlockBtn{ padding:14px; font-size:15px; background:linear-gradient(180deg,#fff,#dde7fb); color:#07111f; }
+  #lockMsg{ min-height:18px; font-size:13px; color:var(--ink-2); margin-top:12px; }
+  #lockMsg.err{ color:#ff8a7a; }
+  .shake{ animation:shake .5s; }
+  @keyframes shake{ 20%{ transform:translateX(-10px); } 40%{ transform:translateX(9px); } 60%{ transform:translateX(-6px); } 80%{ transform:translateX(3px); } }
+  .lock .fine{ margin-top:16px; font-size:11px; color:var(--ink-3); }
+  .lock .fine a{ color:var(--ink-2); }
 
-  #lockView{ display:none; }
-  body.locked #lockView{ display:block; }
-  body.locked #appView{ display:none; }
-  .lockbox{ border:1px solid var(--line); background:var(--panel); padding:22px 18px; }
-  .lockbox p{ color:var(--grey); font-size:13px; line-height:1.6; margin:0 0 16px; }
-  .lockbox form{ margin-bottom:10px; }
-  .lockbox input[type=password]{
-    flex:1; min-width:0; width:100%;
-    background:var(--bg); border:1px solid var(--line); color:var(--amber);
-    font-family:inherit; font-size:18px; letter-spacing:2px; padding:12px 14px; border-radius:2px; outline:none;
+  #toast{ position:fixed; left:50%; top:calc(90px + var(--safe-t)); transform:translate(-50%, -20px); padding:10px 16px; --r:999px; font-size:13px; font-weight:600; z-index:20; opacity:0; pointer-events:none; transition:all .5s var(--ease); }
+  #toast.show{ opacity:1; transform:translate(-50%, 0); }
+
+  .boot{ position:fixed; inset:0; display:grid; place-items:center; pointer-events:none; z-index:9; transition:opacity .5s; }
+  body:not(.booting) .boot{ opacity:0; }
+  .boot i{ width:42px; height:42px; border-radius:50%; border:2px solid rgba(255,255,255,.15); border-top-color:#5dffa0; animation:spin 1s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* ================= phones ================= */
+  @media (max-width:860px){
+    .topbar{ flex-wrap:wrap; left:10px; right:10px; top:calc(10px + var(--safe-t)); padding:8px 8px 8px 12px; gap:8px; }
+    .brand small{ display:none; }
+    .topbar .seg{ order:3; width:100%; margin:0; }
+    .topbar .seg button{ padding:7px 6px; font-size:12.5px; }
+    .clock{ margin-left:auto; min-width:0; }
+    .clock strong{ font-size:19px; }
+    .net{ top:auto; bottom:auto; left:10px; right:10px; width:auto; top:calc(116px + var(--safe-t)); padding:8px; --r:20px; }
+    .net h3, .net .foot, .net .row{ display:none; }
+    .lines{ grid-template-columns:1fr 1fr; gap:6px; }
+    .lines button{ padding:6px 10px; gap:9px; border-radius:14px; }
+    .lines b{ font-size:19px; min-width:0; } .lines .sw{ height:24px; width:7px; }
+    .lines .t{ font-size:11px; } .lines small{ font-size:10px; }
+    #dayWarn{ margin:6px 4px 2px; font-size:10.5px; }
+    .dock{ left:10px; right:10px; width:auto; transform:none; bottom:calc(var(--sheet-h, 206px) + 16px + var(--safe-b)); padding:6px; gap:6px; transition:bottom .55s var(--ease-out), opacity .4s; }
+    body.locked .dock, body.booting .dock{ transform:translateY(10px); }
+    body.sheet-open .dock{ opacity:0; pointer-events:none; }
+    .dock .gbtn.icon{ width:36px; height:36px; }
+    #speeds button{ padding:6px 7px; font-size:11px; }
+    #liveBtn{ padding:8px 10px; font-size:11px; }
+    .track .hours{ display:none; }
+    .sheet{ top:auto; left:10px; right:10px; width:auto; bottom:calc(10px + var(--safe-b)); height:var(--sheet-h, 196px); --r:30px;
+            transition:height .55s var(--ease-out); }
+    body.sheet-open .sheet{ height:min(60vh, 560px); }
+    #grab{ display:block; width:100%; height:22px; border:0; background:none; cursor:grab; flex:none; }
+    #grab::before{ content:""; display:block; width:40px; height:5px; margin:9px auto 0; border-radius:3px; background:rgba(255,255,255,.35); }
+    #search{ padding:2px 12px 8px; }
+    #q{ font-size:20px; padding:10px 12px 10px 40px; }
+    #card{ padding:2px 14px 16px; }
+    .c-num{ font-size:46px; }
+    .c-where{ font-size:19px; }
   }
-  .lockbox input[type=password]:focus{ border-color:var(--amber-dim); }
-  #lockMsg{ font-size:12px; min-height:18px; color:var(--grey); }
-  #lockMsg.err{ color:#ff6b5e; }
-  .lockout{ background:none; border:none; color:var(--grey); font-size:11px; padding:0; text-decoration:underline; cursor:pointer; letter-spacing:0; text-transform:none; font-weight:400; }
-  .lockout:hover{ background:none; color:var(--amber); }
-  @media (max-width:520px){
-    .row{ grid-template-columns:70px 1fr 1fr; }
-    .depot-code{ font-size:20px; }
-    .where{ font-size:19px; }
-    .browse .hide-sm{ display:none; }
-  }
+  @media (prefers-reduced-motion: reduce){ *{ transition-duration:.01ms !important; animation:none !important; } }
 </style>
 </head>
-<body class="locked">
-<div class="board">
+<body class="booting">
+<div id="stage"></div>
+<div class="vignette"></div>
+<div class="boot"><i></i></div>
 
-  <div class="board-head">
-    <h1 id="title">Train Lookup</h1>
-    <span id="headMeta"></span>
+<header class="topbar glass ui">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#0b1a14"/><rect x="16" y="10" width="32" height="36" rx="8" fill="#35e27a"/><rect x="21" y="16" width="22" height="12" rx="2" fill="#0b1a14"/><circle cx="24" cy="37" r="3" fill="#0b1a14"/><circle cx="40" cy="37" r="3" fill="#0b1a14"/><path d="M22 47 L16 56 M42 47 L48 56" stroke="#35e27a" stroke-width="4" stroke-linecap="round"/></svg>
+    <div><b>LookTrain</b><small id="versions">Live network</small></div>
   </div>
-
-  <section id="lockView">
-    <div class="lockbox">
-      <p>The timetable data on this site is encrypted. Enter the password once on this device and it'll be remembered.</p>
-      <form id="lockForm" autocomplete="on">
-        <input type="text" name="username" value="looktrain" autocomplete="username" hidden>
-        <input type="password" id="lockPass" placeholder="Password" autocomplete="current-password" required>
-        <button type="submit" id="unlockBtn">Unlock</button>
-      </form>
-      <div id="lockMsg"></div>
-    </div>
-  </section>
-
-  <section id="appView">
-  <div class="daytabs linetabs" id="lineTabs">
-    <button type="button" class="daytab linetab" data-line="EW">East-West<span class="sub">EWL</span></button>
-    <button type="button" class="daytab linetab" data-line="NS">North-South<span class="sub">NSL</span></button>
+  <div class="seg" id="days">
+    <span class="lens"></span>
+    <button data-day="weekday">Weekday<i hidden></i></button>
+    <button data-day="saturday">Saturday<i hidden></i></button>
+    <button data-day="sunday">Sunday<i hidden></i></button>
   </div>
-  <div class="daytabs" id="dayTabs">
-    <button type="button" class="daytab" data-day="weekday">Weekday<span class="sub"></span></button>
-    <button type="button" class="daytab" data-day="saturday">Saturday<span class="sub"></span></button>
-    <button type="button" class="daytab" data-day="sunday">Sunday<span class="sub"></span></button>
+  <div class="clock live" id="clock"><strong id="clockTime">--:--:--</strong><span id="clockMode">LIVE · SGT</span></div>
+</header>
+
+<aside class="net glass ui">
+  <h3>Network now <span>scheduled</span></h3>
+  <div class="lines">
+    <button class="on" data-line="EW" id="st-EW" style="--c:var(--ew)"><span class="sw"></span><b>–</b><span class="t">East-West<small></small></span></button>
+    <button class="on" data-line="NS" id="st-NS" style="--c:var(--ns)"><span class="sw"></span><b>–</b><span class="t">North-South<small></small></span></button>
   </div>
+  <div id="dayWarn" hidden>Showing a different day's timetable than today's. Public holidays usually run the Sunday timetable.</div>
+  <div class="row"><button class="gbtn" id="overviewBtn">Overview</button></div>
+  <div class="foot">Positions are where trains are <b>scheduled</b> to be from the OCC timetables — not live tracking. ~ times are estimated between timing points. Drag to orbit · pinch or scroll to zoom · tap a train.<br>
+    <a href="classic.html">Classic view</a> · <button id="lockBtn">Lock this device</button></div>
+</aside>
 
-  <div class="clock" id="clock">
-    <span id="liveTag" class="live"><span class="dot"></span>Live</span>
-    <label for="timeInput">Time</label>
-    <input type="time" id="timeInput" step="1">
-    <button type="button" class="ghost" id="nowBtn">Now</button>
-    <span class="warn" id="dayWarn" hidden></span>
+<div class="dock glass ui" id="dock">
+  <button class="gbtn" id="liveBtn">LIVE</button>
+  <button class="gbtn icon" id="play" aria-label="Play">▶</button>
+  <div class="track">
+    <div class="rail"><div id="scrubFill"></div></div>
+    <input type="range" id="scrub" min="16200" max="92700" step="15" aria-label="Time of day">
+    <div class="hours"><span>05</span><span>09</span><span>13</span><span>17</span><span>21</span><span>01</span></div>
   </div>
-
-  <form id="lookupForm" autocomplete="off">
-    <input type="text" id="trainInput" placeholder="e.g. 305" inputmode="numeric" maxlength="3" />
-    <button type="submit" id="findBtn">Find</button>
-  </form>
-
-  <div id="result">
-    <div class="placeholder">Enter a 3-digit train number to see where it should be right now, its next stops, and where it launches from and withdraws to.</div>
-  </div>
-
-  <details class="browse" id="browse">
-    <summary id="browseSummary">Browse all trains &rarr;</summary>
-    <table id="browseTable">
-      <thead><tr><th>Train</th><th id="nowHead">Now (sched.)</th><th class="hide-sm">Launch</th><th>Withdraw</th><th>Time</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </details>
-
-  <div class="footnote" id="footnote"></div>
-  <div class="footnote" style="border:none;margin-top:8px;padding:0;"><button type="button" class="lockout" id="lockBtn">Lock this device</button></div>
-  </section>
-
+  <div class="seg small" id="speeds"><span class="lens"></span><button data-s="1">1×</button><button data-s="60">60×</button><button data-s="300">300×</button><button data-s="600">600×</button></div>
 </div>
 
-<script>
-// ---------- timetables ----------
-// One encrypted file per timetable version in data/ (see data/meta.json for the key derivation).
-const VERSIONS = {
-  EW: { weekday: 'EWWD081', saturday: 'EWSA049', sunday: 'EWSU043' },
-  NS: { saturday: 'NSSA048', sunday: 'NSSU039' },
-};
-const LINE_NAMES = { EW: 'East-West Line', NS: 'North-South Line' };
-
-// Stations in line order with rough distance (km) from the previous one. Only used to
-// estimate times at stations the OCC report doesn't list; timing-point times are exact.
-const LINES = {
-  EW: {
-    main: [['TLK','Tuas Link',0],['TWR','Tuas West Road',1.1],['TCR','Tuas Crescent',1.3],['GCL','Gul Circle',1.5],
-      ['JKN','Joo Koon',2.2],['PNR','Pioneer',2.0],['BNL','Boon Lay',1.2],['LKS','Lakeside',1.6],['CNG','Chinese Garden',1.3],
-      ['JUR','Jurong East',1.3],['CLE','Clementi',2.6],['DVR','Dover',1.7],['BNV','Buona Vista',1.7],['COM','Commonwealth',1.1],
-      ['QUE','Queenstown',0.9],['RDH','Redhill',1.6],['TIB','Tiong Bahru',1.2],['OTP','Outram Park',1.3],['TPG','Tanjong Pagar',0.9],
-      ['RFP','Raffles Place',1.1],['CTH','City Hall',0.9],['BGS','Bugis',1.0],['LVR','Lavender',0.8],['KAL','Kallang',1.0],
-      ['ALJ','Aljunied',1.3],['PYL','Paya Lebar',1.1],['EUN','Eunos',1.1],['KEM','Kembangan',1.1],['BDK','Bedok',1.5],
-      ['TNM','Tanah Merah',1.8],['SIM','Simei',2.0],['TAM','Tampines',1.5],['PSR','Pasir Ris',2.4]],
-    branch: { from: 'TNM', stations: [['XPO','Expo',3.5],['CGA','Changi Airport',2.4]] },
-  },
-  NS: {
-    main: [['JUR','Jurong East',0],['BBT','Bukit Batok',2.2],['BGB','Bukit Gombak',1.4],['CCK','Choa Chu Kang',2.0],
-      ['YWT','Yew Tee',1.4],['KRJ','Kranji',3.4],['MSL','Marsiling',2.4],['WDL','Woodlands',1.4],['ADM','Admiralty',1.4],
-      ['SBW','Sembawang',1.5],['CBR','Canberra',1.8],['YIS','Yishun',1.7],['KTB','Khatib',3.6],['YCK','Yio Chu Kang',4.0],
-      ['AMK','Ang Mo Kio',1.1],['BSH','Bishan',2.4],['BDL','Braddell',1.6],['TAP','Toa Payoh',1.0],['NOV','Novena',1.4],
-      ['NEW','Newton',1.3],['ORC','Orchard',1.1],['SOM','Somerset',0.9],['DBG','Dhoby Ghaut',0.9],['CTH','City Hall',1.0],
-      ['RFP','Raffles Place',1.1],['MRB','Marina Bay',0.9],['MSP','Marina South Pier',1.4]],
-  },
-};
-const DEPOTS = { ECID: 'East Coast Integrated Depot', TWD: 'Tuas West Depot', UPD: 'Ulu Pandan Depot', BSD: 'Bishan Depot' };
-const DIR_NAMES = { E: 'Eastbound', W: 'Westbound', N: 'Northbound', S: 'Southbound' };
-
-// Build lookup tables: station -> {name, km, branch?}
-const GEO = {};
-for(const [line, def] of Object.entries(LINES)){
-  const g = GEO[line] = {};
-  let km = 0;
-  def.main.forEach(([c, n, d], i) => { km += d; g[c] = { code: c, name: n, km, idx: i }; });
-  if(def.branch){
-    let bk = 0;
-    def.branch.stations.forEach(([c, n, d], i) => { bk += d; g[c] = { code: c, name: n, bkm: bk, branch: true, idx: i }; });
-  }
-}
-
-// "TLK A" -> station TLK; "ECID-TB3A" -> depot; "JKN S" / "PSR S A" -> siding near a station.
-function locate(line, label){
-  const dep = label.match(/^(ECID|TWD|UPD|BSD)\b/);
-  if(dep) return { kind: 'depot', code: dep[1], name: DEPOTS[dep[1]], label };
-  const code = label.split(/[\s-]/)[0];
-  const st = GEO[line][code];
-  if(!st) return { kind: 'other', code, name: label, label };
-  const siding = /\sS(\s|$)/.test(label) || /^TNM B/.test(label) && line === 'EW';
-  return { kind: siding ? 'siding' : 'station', code, name: st.name + (siding ? ' siding' : ''), label };
-}
-
-// Stations strictly between two stations, in travel order, with distance from a.
-function between(line, a, b){
-  const g = GEO[line], def = LINES[line];
-  const pathMain = (x, y) => {
-    if(x === y) return [];
-    const i = g[x].idx, j = g[y].idx, step = i < j ? 1 : -1, out = [];
-    for(let k = i + step; k !== j; k += step){ out.push(def.main[k][0]); }
-    return out;
-  };
-  const pathBranch = (x, y) => {  // x, y in [from, ...branch]
-    if(x === y) return [];
-    const seq = [def.branch.from, ...def.branch.stations.map(s => s[0])];
-    const i = seq.indexOf(x), j = seq.indexOf(y), step = i < j ? 1 : -1, out = [];
-    for(let k = i + step; k !== j; k += step){ out.push(seq[k]); }
-    return out;
-  };
-  const onBranch = c => g[c] && g[c].branch;
-  let seq;
-  if(!g[a] || !g[b] || a === b) return [];
-  if(!onBranch(a) && !onBranch(b)) seq = pathMain(a, b);
-  else if(onBranch(a) && onBranch(b)) seq = pathBranch(a, b);
-  else {
-    const j = def.branch.from, mid = (a === j || b === j) ? [] : [j];   // pass through the junction
-    seq = onBranch(a) ? [...pathBranch(a, j), ...mid, ...pathMain(j, b)] : [...pathMain(a, j), ...mid, ...pathBranch(j, b)];
-  }
-  // cumulative distance along the path
-  const pos = c => g[c].branch ? g[def.branch.from].km + g[c].bkm : g[c].km;
-  const dist = (x, y) => (onBranch(x) !== onBranch(y) && !(x === def.branch.from || y === def.branch.from))
-    ? Math.abs(pos(x) - g[def.branch.from].km) + Math.abs(pos(y) - g[def.branch.from].km)
-    : Math.abs(pos(x) - pos(y));
-  const total = dist(a, b);
-  let prev = a, acc = 0;
-  return seq.map(c => { acc += dist(prev, c); prev = c; return { code: c, frac: total ? acc / total : 0 }; });
-}
-
-// Expand one trip's timing points into every station, estimating the ones in between.
-function expandTrip(line, trip){
-  const [, dir, pts] = trip, rows = [];
-  pts.forEach(([label, t, off], i) => {
-    const loc = locate(line, label);
-    if(i > 0){
-      const [pl, pt] = pts[i - 1];
-      const a = locate(line, pl);
-      if(a.kind !== 'depot' && loc.kind !== 'depot' && a.kind !== 'other' && loc.kind !== 'other'){
-        for(const s of between(line, a.code, loc.code)){
-          rows.push({ code: s.code, name: GEO[line][s.code].name, t: Math.round(pt + (t - pt) * s.frac), est: true, off: !!off });
-        }
-      }
-    }
-    // Avoid listing the same station twice in a row (e.g. JKN S then JKN A)
-    const last = rows[rows.length - 1];
-    if(last && last.code === loc.code && loc.kind === last.kind && !last.est){ last.t2 = t; last.label += ' / ' + label; return; }
-    rows.push({ code: loc.code, name: loc.name, kind: loc.kind, label, t, est: false, off: !!off });
-  });
-  return { dir, rows, start: rows[0].t, end: rows[rows.length - 1].t, off: pts.every(p => p[2]) };
-}
-
-// ---------- time (always Singapore) ----------
-const SGT = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
-function sgNow(){
-  const p = Object.fromEntries(SGT.formatToParts(new Date()).map(x => [x.type, x.value]));
-  let sec = +p.hour * 3600 + +p.minute * 60 + +p.second;
-  let wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(p.weekday);
-  // Service day runs until ~04:00: after midnight still counts as the previous day's timetable.
-  if(sec < 4 * 3600){ sec += 86400; wd = (wd + 6) % 7; }
-  return { sec, day: wd === 0 ? 'sunday' : wd === 6 ? 'saturday' : 'weekday' };
-}
-function hms(sec, withSec = true){
-  sec = Math.round(sec);
-  const d = sec >= 86400, s = ((sec % 86400) + 86400) % 86400;
-  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
-  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + (withSec ? ':' + String(x).padStart(2, '0') : '');
-}
-function inText(d){
-  d = Math.round(d);
-  if(d < 60) return `${d}s`;
-  const m = Math.floor(d / 60), s = d % 60;
-  if(m < 60) return s && m < 10 ? `${m} min ${s}s` : `${m} min`;
-  return `${Math.floor(m / 60)} h ${m % 60} min`;
-}
-function formatTime(t){
-  const m = t.match(/^1\.(\d{1,2}:\d{2}:\d{2})$/);
-  if(m){ return `${m[1]} <span style="color:var(--grey);font-size:11px;">(next day)</span>`; }
-  return t;
-}
-function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-// ---------- state ----------
-let currentLine = 'EW', currentDay = 'weekday';
-let customSec = null;           // null = live
-let shownTrain = null;
-const cache = {};
-let ds = null;                  // current dataset
-let plans = {};                 // train -> [expanded trips]
-
-const $ = id => document.getElementById(id);
-const form = $('lookupForm'), input = $('trainInput'), result = $('result'), headMeta = $('headMeta');
-const footnote = $('footnote'), browseSummary = $('browseSummary'), tbody = document.querySelector('#browseTable tbody');
-const timeInput = $('timeInput'), liveTag = $('liveTag'), dayWarn = $('dayWarn');
-
-// ---------- encrypted data ----------
-const KEY_STORE = 'lookup.key.v1';
-let aesKey = null, meta = null;
-const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-const b64 = u8 => btoa(String.fromCharCode(...u8));
-
-async function getMeta(){
-  if(!meta){ const r = await fetch('data/meta.json', { cache: 'no-cache' }); if(!r.ok) throw new Error('meta ' + r.status); meta = await r.json(); }
-  return meta;
-}
-async function openBox(box){
-  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv) }, aesKey, unb64(box.ct)));
-}
-async function tryKey(key){
-  const m = await getMeta();
-  try{
-    const ok = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(m.check.iv) }, key, unb64(m.check.ct)));
-    return ok === 'looktrain-ok';
-  }catch(e){ return false; }
-}
-async function unlockWith(pass){
-  const m = await getMeta();
-  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
-  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: unb64(m.salt), iterations: m.iter, hash: 'SHA-256' },
-    base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
-  if(!(await tryKey(key))) return false;
-  aesKey = key;
-  try{ localStorage.setItem(KEY_STORE, JSON.stringify({ salt: m.salt, k: b64(new Uint8Array(await crypto.subtle.exportKey('raw', key))) })); }catch(e){}
-  return true;
-}
-async function restoreKey(){
-  let saved = null;
-  try{ saved = JSON.parse(localStorage.getItem(KEY_STORE)); }catch(e){}
-  if(!saved) return false;
-  const m = await getMeta();
-  if(saved.salt !== m.salt) return false;          // password was changed since
-  const key = await crypto.subtle.importKey('raw', unb64(saved.k), { name: 'AES-GCM' }, false, ['decrypt']);
-  if(!(await tryKey(key))) return false;
-  aesKey = key;
-  return true;
-}
-
-async function loadVersion(v){
-  if(!cache[v]){
-    cache[v] = (async () => {
-      const r = await fetch(`data/${v}.enc`);
-      if(!r.ok) throw new Error(r.status);
-      const gz = await openBox(await r.json());
-      const text = await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
-      return JSON.parse(text);
-    })();
-    cache[v].catch(() => { delete cache[v]; });
-  }
-  return cache[v];
-}
-
-function nowSec(){ return customSec != null ? customSec : sgNow().sec; }
-
-// ---------- where is a train at time T ----------
-function status(train, T){
-  const trips = plans[train];
-  const rec = ds.trains[train];
-  if(!trips || !trips.length) return null;
-  const first = trips[0], last = trips[trips.length - 1];
-  if(T < first.start){
-    const r0 = first.rows[0];
-    return { kind: 'before', text: r0.kind === 'depot' ? `In ${r0.code} depot` : `Stabled at ${r0.name}`,
-      sub: `Launches ${hms(first.start)} (in ${inText(first.start - T)})`, trip: first, tripIdx: 0 };
-  }
-  if(T > last.end){
-    const rl = last.rows[last.rows.length - 1];
-    return { kind: 'after', text: rl.kind === 'depot' ? `Withdrawn to ${rl.code}` : `Stabled at ${rl.name}`,
-      sub: `Arrived ${hms(last.end)}`, trip: last, tripIdx: trips.length - 1 };
-  }
-  for(let i = 0; i < trips.length; i++){
-    const tr = trips[i];
-    if(T >= tr.start && T <= tr.end){
-      const rows = tr.rows;
-      let k = rows.findIndex(r => r.t > T);
-      if(k === -1) k = rows.length - 1;
-      const next = rows[k], prev = rows[Math.max(0, k - 1)];
-      const dwell = next.t - T <= 30 || (prev.t2 && T <= prev.t2);
-      let text, pos;
-      if(k === 0 || prev === next) { text = `At ${next.name}`; pos = 0; }
-      else if(dwell){ text = `At ${next.name}`; pos = k; }
-      else { text = `Between ${prev.name} and ${next.name}`; pos = k - 1 + (T - prev.t) / (next.t - prev.t); }
-      return { kind: 'moving', text, trip: tr, tripIdx: i, next, nextIdx: k, pos, off: next.off, est: next.est || prev.est };
-    }
-    const nx = trips[i + 1];
-    if(nx && T > tr.end && T < nx.start){
-      const at = tr.rows[tr.rows.length - 1];
-      return { kind: 'layover', text: at.kind === 'depot' ? `In ${at.code} depot` : `At ${at.name}`,
-        sub: `Next: ${DIR_NAMES[nx.dir]} from ${nx.rows[0].name} at ${hms(nx.start)} (in ${inText(nx.start - T)})`,
-        trip: nx, tripIdx: i + 1, waiting: true };
-    }
-  }
-  return null;
-}
-
-function shortStatus(train, T){
-  const st = status(train, T);
-  if(!st) return '';
-  if(st.kind === 'moving'){
-    const n = st.next;
-    const tag = st.trip.dir + 'B';
-    return `${tag} → ${n.code}${st.off ? ' (off-svc)' : ''}`;
-  }
-  if(st.kind === 'before') return 'Not launched';
-  if(st.kind === 'after') return 'Withdrawn';
-  return st.text.replace('depot', '').trim();
-}
-
-// ---------- rendering ----------
-function depotCard(train){
-  const rec = ds.trains[train];
-  if(!rec) return '';
-  const L = rec.launch, W = rec.withdraw;
-  const isEcid = currentLine === 'EW' && W && W.depot === 'ECID';
-  const cell = r => r ? `
-        <div class="depot-code ${r.depot === 'ECID' && currentLine === 'EW' ? 'ecid' : ''}" style="font-size:18px;">${esc(r.depot)}</div>
-        <div class="point">${esc(r.point)}</div>
-        <div class="time">${formatTime(r.time)}</div>` : '<div class="point">—</div>';
-  return `
-    <div class="row head"><div>TRAIN</div><div>LAUNCH</div><div>WITHDRAW</div></div>
-    <div class="row">
-      <div class="depot-code">${esc(train)}</div>
-      <div>${cell(L)}</div>
-      <div>${cell(W)}</div>
+<section class="sheet glass ui" id="sheet">
+  <button id="grab" aria-label="Expand panel"></button>
+  <form id="search" autocomplete="off">
+    <div class="field">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" inputmode="numeric" maxlength="3" placeholder="Train number" aria-label="Train number">
     </div>
-    ${currentLine === 'EW' && W ? `<div class="verdict ${isEcid ? 'job' : 'notjob'}">
-      <span class="dot"></span>
-      ${isEcid ? `Withdraws to ECID at ${formatTime(W.time)} - your job.` : `Withdraws to ${esc(W.depot)} at ${formatTime(W.time)} - not ECID.`}
-    </div>` : ''}`;
-}
+    <button class="gbtn" type="submit">Find</button>
+  </form>
+  <div id="card"></div>
+</section>
 
-function trackHtml(trip, pos){
-  const rows = trip.rows, n = rows.length - 1 || 1;
-  const pct = i => (i / n * 100).toFixed(2) + '%';
-  return `<div class="track">
-      <div class="rail"></div>
-      <div class="done" style="width:${pct(Math.max(0, pos))}"></div>
-      ${rows.map((r, i) => `<div class="tick ${r.est ? '' : 'tp'}" style="left:${pct(i)}"></div>`).join('')}
-      <div class="train" style="left:${pct(Math.max(0, pos))}"></div>
-    </div>
-    <div class="track-ends"><span>${esc(rows[0].name)}</span><span>${esc(rows[rows.length - 1].name)}</span></div>`;
-}
+<div class="lock">
+  <div class="glass" id="lockCard">
+    <svg width="56" height="56" viewBox="0 0 64 64" aria-hidden="true" style="filter:drop-shadow(0 0 18px rgba(80,255,160,.55))"><rect width="64" height="64" rx="16" fill="#0b1a14"/><rect x="16" y="10" width="32" height="36" rx="8" fill="#35e27a"/><rect x="21" y="16" width="22" height="12" rx="2" fill="#0b1a14"/><circle cx="24" cy="37" r="3" fill="#0b1a14"/><circle cx="40" cy="37" r="3" fill="#0b1a14"/><path d="M22 47 L16 56 M42 47 L48 56" stroke="#35e27a" stroke-width="4" stroke-linecap="round"/></svg>
+    <h1>LookTrain</h1>
+    <p>Every EWL &amp; NSL train, where it should be right now.<br>Enter the password once on this device.</p>
+    <form id="lockForm" autocomplete="on">
+      <input type="text" name="username" value="looktrain" autocomplete="username" hidden>
+      <input type="password" id="lockPass" placeholder="Password" autocomplete="current-password" required>
+      <button class="gbtn" id="unlockBtn" type="submit">Unlock</button>
+    </form>
+    <div id="lockMsg"></div>
+    <div class="fine">Timetable data is encrypted · <a href="classic.html">Classic view</a></div>
+  </div>
+</div>
 
-function stopsHtml(trip, T, nextIdx){
-  return `<table class="stops">${trip.rows.map((r, i) => {
-    const past = r.t < T && (nextIdx == null || i < nextIdx);
-    const cls = [r.est ? 'est' : '', past ? 'past' : '', i === nextIdx ? 'here' : '', r.off ? 'off' : ''].join(' ');
-    const note = r.kind === 'depot' ? 'depot' : r.est ? 'est.' : r.label;
-    return `<tr class="${cls}"><td class="t">${r.est ? '~' : ''}${hms(r.t)}</td><td class="nm">${esc(r.name)} <small>${esc(note || '')}</small></td></tr>`;
-  }).join('')}</table>`;
-}
+<div class="glass" id="toast"></div>
 
-function dayHtml(train, curIdx){
-  const trips = plans[train];
-  return `<details class="day"><summary>Full day · ${trips.length} trip${trips.length === 1 ? '' : 's'} &rarr;</summary>
-    ${trips.map((tr, i) => `<details class="trip ${i === curIdx ? 'cur' : ''}">
-      <summary><span class="d">${tr.dir}</span><span class="tm">${hms(tr.start, false)}–${hms(tr.end, false)}</span>
-        <span>${esc(tr.rows[0].name)} → ${esc(tr.rows[tr.rows.length - 1].name)}</span>${tr.off ? '<span class="offtag">off-service</span>' : ''}</summary>
-      ${stopsHtml(tr, -1, null)}
-    </details>`).join('')}
-  </details>`;
-}
-
-function render(train){
-  shownTrain = train;
-  if(!ds) return;
-  const rec = ds.trains[train];
-  if(!rec && !plans[train]){
-    result.innerHTML = `<div class="error">No train numbered "${esc(train)}" in ${ds.version} (${LINE_NAMES[currentLine]}, ${ds.label}). Double-check the digits, or try the other line or day.</div>`;
-    return;
-  }
-  const T = nowSec();
-  let live = '';
-  if(!ds.trips.length){
-    live = `<div class="card"><div class="card-label"><span>Position</span></div>
-      <div class="muted">Live position isn't available for ${ds.version} yet — only its launch/withdraw tables are loaded. Send the full ${ds.label.toLowerCase()} OCC timetable report to add it.</div></div>`;
-  } else {
-    const st = status(train, T);
-    if(st){
-      const svc = st.kind === 'moving'
-        ? (st.off ? '<div class="svc off">Not in passenger service</div>' : `<div class="svc in">${DIR_NAMES[st.trip.dir]} · in passenger service</div>`)
-        : '<div class="svc idle">Not moving</div>';
-      let body = '';
-      if(st.kind === 'moving'){
-        const tr = st.trip, dest = tr.rows[tr.rows.length - 1];
-        const n = st.next;
-        body = `<div class="nextline">Next: <b>${esc(n.name)}</b> ${n.est ? '~' : ''}${hms(n.t)} · in ${inText(Math.max(0, n.t - T))}</div>
-          <div class="nextline">Terminates <b>${esc(dest.name)}</b> ${hms(dest.t)}</div>
-          ${trackHtml(tr, st.pos)}
-          ${stopsHtml(tr, T, st.nextIdx)}`;
-      } else if(st.kind === 'layover' || st.kind === 'before'){
-        body = `<div class="nextline">${esc(st.sub)}</div>${stopsHtml(st.trip, T, null)}`;
-      } else {
-        body = `<div class="nextline">${esc(st.sub)}</div>`;
-      }
-      live = `<div class="card">
-        <div class="card-label"><span>Train ${esc(train)} · ${customSec != null ? 'at ' + hms(T) : 'now ' + hms(T)}</span><span>scheduled</span></div>
-        <div class="where">${esc(st.text)}${st.est && st.kind === 'moving' ? '<small>Stations marked ~ are estimated between timing points</small>' : ''}</div>
-        ${svc}${body}
-      </div>`;
-      live += `<div class="card"><div class="card-label"><span>Timetable</span></div>${dayHtml(train, st.tripIdx)}</div>`;
-    } else {
-      live = `<div class="card"><div class="muted">Train ${esc(train)} has launch/withdraw entries but no running times in ${ds.version}.</div></div>`;
-    }
-  }
-  const openDetails = [...result.querySelectorAll('details')].map(d => d.open);
-  result.innerHTML = live + (rec ? depotCard(train) : '');
-  // keep expanded sections open across the once-a-second refresh
-  [...result.querySelectorAll('details')].forEach((d, i) => { if(openDetails[i]) d.open = true; });
-}
-
-function refreshHeader(){
-  $('title').textContent = currentLine === 'EW' ? 'EWL Train Lookup' : 'NSL Train Lookup';
-  headMeta.textContent = ds ? `${ds.version} · ${ds.label} · eff. ${ds.effective}` : '';
-  document.querySelectorAll('#lineTabs .daytab').forEach(b => b.classList.toggle('active', b.dataset.line === currentLine));
-  const today = sgNow().day;
-  document.querySelectorAll('#dayTabs .daytab').forEach(b => {
-    const v = VERSIONS[currentLine][b.dataset.day];
-    b.disabled = !v;
-    b.classList.toggle('active', b.dataset.day === currentDay);
-    b.querySelector('.sub').innerHTML = (v || 'not loaded') + (b.dataset.day === today ? '<span class="today">TODAY</span>' : '');
-  });
-  const wrongDay = customSec == null && currentDay !== today;
-  dayWarn.hidden = !wrongDay;
-  dayWarn.textContent = wrongDay ? `Showing the ${currentDay} timetable at today's time (public holidays usually run the Sunday timetable).` : '';
-  if(ds){
-    footnote.innerHTML = `<b>How to read this</b> — positions and times come from the <b>${ds.version}</b> OCC timetable (${ds.label}, effective ${ds.effective}) and show where the train is <b>scheduled</b> to be, not where it actually is: delays, holds, reformations and service changes aren't known here. Times without ~ are timing points from the report; ~ times are estimated between them by distance. "Launch" is where the service starts its day and "Withdraw" its final return to a depot (times marked "next day" are after midnight). Re-check against the current amendment leaflet before relying on it for handover decisions.`;
-  }
-}
-
-function refreshBrowse(){
-  if(!ds){ tbody.innerHTML = ''; return; }
-  const T = nowSec(), hasTrips = ds.trips.length > 0;
-  $('nowHead').style.display = hasTrips ? '' : 'none';
-  const keys = [...new Set([...Object.keys(ds.trains), ...Object.keys(plans)])].sort((a, b) => a - b);
-  browseSummary.textContent = `Browse all ${keys.length} trains →`;
-  tbody.innerHTML = keys.map(t => {
-    const r = ds.trains[t] || {};
-    const W = r.withdraw, L = r.launch;
-    const ec = currentLine === 'EW' && W && W.depot === 'ECID' ? ' class="ec"' : '';
-    return `<tr data-train="${esc(t)}"><td>${esc(t)}</td>${hasTrips ? `<td class="nowc">${esc(shortStatus(t, T))}</td>` : ''}<td class="hide-sm">${L ? esc(L.depot) : ''}</td><td${ec}>${W ? esc(W.depot) : ''}</td><td>${W ? formatTime(W.time) : ''}</td></tr>`;
-  }).join('');
-}
-
-async function switchTo(line, day){
-  currentLine = line;
-  if(!VERSIONS[line][day]) day = VERSIONS[line][sgNow().day] ? sgNow().day : 'saturday';
-  currentDay = day;
-  try{ localStorage.setItem('lookup.line', line); }catch(e){}
-  ds = null; plans = {};
-  refreshHeader();
-  result.innerHTML = '<div class="placeholder">Loading timetable…</div>';
-  const v = VERSIONS[line][day];
-  let data;
-  try{ data = await loadVersion(v); }
-  catch(e){ result.innerHTML = `<div class="error">Couldn't load ${v}. Check your connection and try again.</div>`; return; }
-  if(currentLine !== line || currentDay !== day) return;   // user switched again meanwhile
-  ds = data;
-  for(const trip of ds.trips){
-    try{ (plans[trip[0]] = plans[trip[0]] || []).push(expandTrip(line, trip)); }
-    catch(e){ console.warn('Skipped trip', trip, e); }
-  }
-  Object.values(plans).forEach(p => p.sort((a, b) => a.start - b.start));
-  refreshHeader();
-  refreshBrowse();
-  if(shownTrain && (ds.trains[shownTrain] || plans[shownTrain])) render(shownTrain);
-  else result.innerHTML = `<div class="placeholder">Enter a 3-digit train number to see where it should be ${customSec == null ? 'right now' : 'at ' + hms(customSec)}, its next stops, and where it launches from and withdraws to.</div>`;
-}
-
-function doLookup(){
-  const val = input.value.trim().replace(/^0+/, '') || input.value.trim();
-  if(!val) return;
-  render(val);
-}
-
-// ---------- events ----------
-$('lineTabs').addEventListener('click', e => { const b = e.target.closest('.daytab'); if(b) switchTo(b.dataset.line, currentDay); });
-$('dayTabs').addEventListener('click', e => { const b = e.target.closest('.daytab'); if(b && !b.disabled) switchTo(currentLine, b.dataset.day); });
-form.addEventListener('submit', e => { e.preventDefault(); doLookup(); });
-input.addEventListener('input', () => { input.value = input.value.replace(/[^0-9]/g, ''); });
-tbody.addEventListener('click', e => {
-  const tr = e.target.closest('tr[data-train]');
-  if(!tr) return;
-  input.value = tr.dataset.train;
-  render(tr.dataset.train);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-});
-timeInput.addEventListener('change', () => {
-  if(!timeInput.value){ goLive(); return; }
-  const [h, m, s] = timeInput.value.split(':').map(Number);
-  let sec = h * 3600 + m * 60 + (s || 0);
-  if(sec < 4 * 3600) sec += 86400;   // 00:00–03:59 belongs to the previous service day
-  customSec = sec;
-  liveTag.style.visibility = 'hidden';
-  tick();
-});
-function goLive(){ customSec = null; liveTag.style.visibility = ''; tick(); }
-$('nowBtn').addEventListener('click', goLive);
-
-let lastBrowse = 0;
-function tick(){
-  const T = nowSec();
-  if(document.activeElement !== timeInput) timeInput.value = hms(T);
-  refreshHeader();
-  if(ds && shownTrain) render(shownTrain);
-  if(ds && (customSec != null || Date.now() - lastBrowse > 10000 || !lastBrowse)){ refreshBrowse(); lastBrowse = Date.now(); }
-}
-
-// ---------- start ----------
-let startLine = 'EW';
-try{ startLine = localStorage.getItem('lookup.line') || 'EW'; }catch(e){}
-if(!VERSIONS[startLine]) startLine = 'EW';
-function start(){
-  document.body.classList.remove('locked');
-  switchTo(startLine, sgNow().day).then(tick);
-}
-setInterval(() => { if(customSec == null && aesKey) tick(); }, 1000);
-
-const lockMsg = $('lockMsg');
-$('lockForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  lockMsg.className = ''; lockMsg.textContent = 'Checking…';
-  $('unlockBtn').disabled = true;
-  try{
-    if(await unlockWith($('lockPass').value)){ lockMsg.textContent = ''; $('lockPass').value = ''; start(); }
-    else { lockMsg.className = 'err'; lockMsg.textContent = 'Wrong password.'; }
-  }catch(err){
-    lockMsg.className = 'err';
-    lockMsg.textContent = navigator.onLine ? 'Could not unlock on this browser.' : 'You are offline — connect once to unlock.';
-  }finally{ $('unlockBtn').disabled = false; }
-});
-$('lockBtn').addEventListener('click', () => {
-  try{ localStorage.removeItem(KEY_STORE); }catch(e){}
-  location.reload();
-});
-restoreKey().then(ok => { if(ok) start(); else $('lockPass').focus(); })
-  .catch(() => { lockMsg.className = 'err'; lockMsg.textContent = 'Could not load the site data. Check your connection and reload.'; });
-
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').catch(() => {});
-}
-</script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
