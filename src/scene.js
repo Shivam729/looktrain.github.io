@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { STATIONS, DEPOT_POS, LINE_COLORS, toWorld } from './geo.js';
+import { STATIONS, DEPOT_POS, LINE_COLORS, toWorld, MAP_SCALE as S } from './geo.js';
 import { LINES } from './timetable.js';
 
 // Clarity-first rendering: flat, unlit colours, map-style casing under the tracks, outlined
@@ -137,14 +137,14 @@ export class NetworkScene {
 
     const s = this.scene = new THREE.Scene();
     s.background = new THREE.Color(0x0a1220);
-    s.fog = new THREE.Fog(0x0a1220, 70, 190);
+    s.fog = new THREE.Fog(0x0a1220, 70 * S, 190 * S);
     const cam = this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 600);
-    cam.position.set(0, 110, 90);
+    cam.position.set(0, 110 * S, 90 * S);
     s.add(new THREE.HemisphereLight(0xcfe0ff, 0x1a2230, 1.1));
 
     this.controls = new OrbitControls(cam, r.domElement);
-    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.12, maxPolarAngle: 1.25, minDistance: 5, maxDistance: 140, screenSpacePanning: false, rotateSpeed: 0.6, zoomSpeed: 0.9 });
-    this.controls.target.set(2, 0, 2);
+    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.12, maxPolarAngle: 1.25, minDistance: 5, maxDistance: 140 * S, screenSpacePanning: false, rotateSpeed: 0.6, zoomSpeed: 0.9 });
+    this.controls.target.set(2 * S, 0, 2 * S);
     this.controls.addEventListener('start', () => { if(this.fly) this.fly = null; });
     this.controls.addEventListener('change', () => { this.dirty = true; });
 
@@ -170,7 +170,7 @@ export class NetworkScene {
         varying vec2 vW;
         float grid(vec2 p, float s){ vec2 g = abs(fract(p / s - .5) - .5) * s; vec2 fw = fwidth(p); vec2 l = smoothstep(fw * 1.2, vec2(0.), g); return max(l.x, l.y); }
         void main(){
-          float d = length(vW * vec2(.8, 1.35));
+          float d = length(vW * vec2(.8, 1.35)) / ${S.toFixed(2)};
           vec3 col = mix(vec3(.055,.085,.13), vec3(.04,.065,.105), smoothstep(10., 45., d));
           float fade = 1. - smoothstep(25., 70., d);
           col += vec3(.35,.5,.7) * (grid(vW, 1.) * .03 + grid(vW, 5.) * .07) * fade;
@@ -178,7 +178,7 @@ export class NetworkScene {
           #include <colorspace_fragment>
         }`,
     });
-    const g = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), mat);
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(400 * S, 400 * S), mat);
     g.rotation.x = -Math.PI / 2; this.scene.add(g);
   }
 
@@ -461,7 +461,7 @@ export class NetworkScene {
     this.follow = true;
     if(fly){
       const off = this.camera.position.clone().sub(this.controls.target);
-      off.setLength(Math.min(Math.max(off.length(), 11), 16)); if(!this.top && off.y < 4) off.y = 6;
+      off.setLength(Math.min(Math.max(off.length(), 13), 20)); if(!this.top && off.y < 4) off.y = 6;
       this.flyTo(t.pos.clone().setY(0), t.pos.clone().setY(0).add(off), 1.2);
     }
   }
@@ -488,9 +488,9 @@ export class NetworkScene {
   }
   overviewPose(){
     const wide = this.host.clientWidth > 860;
-    const t = new THREE.Vector3(2, 0, 2);
-    if(this.top) return [t, t.clone().add(new THREE.Vector3(0, wide ? 52 : 80, 0.01))];
-    return [t, new THREE.Vector3(2, wide ? 40 : 62, wide ? 38 : 50)];
+    const t = new THREE.Vector3(2 * S, 0, 2 * S);
+    if(this.top) return [t, t.clone().add(new THREE.Vector3(0, (wide ? 52 : 80) * S, 0.01))];
+    return [t, new THREE.Vector3(2 * S, (wide ? 40 : 62) * S, (wide ? 38 : 50) * S)];
   }
   overview(){ this.follow = false; const [t, p] = this.overviewPose(); this.flyTo(t, p, 1.2); }
 
@@ -614,7 +614,7 @@ export class NetworkScene {
       this.tagPos.set(p.x, TRACK_Y + .2 + 2.6 * k, p.z);
     }
     // label visibility by zoom: far = major stations only, mid/near = everything + train numbers
-    const zoom = camD < 18 ? 'near' : camD < 48 ? 'mid' : 'far';
+    const zoom = camD < 18 * S ? 'near' : camD < 48 * S ? 'mid' : 'far';
     if(zoom !== this.zoom){
       this.zoom = zoom; this.labels.el.dataset.zoom = zoom; this.labelsForce = true;
       for(const line of ['EW', 'NS']) for(const it of this.stationLabels[line]) it.want = this.visibleLines[line] && (zoom !== 'far' || it.major);
