@@ -28,6 +28,8 @@ export const LINE_COLORS = {
 };
 
 const LAT0 = 1.352, LNG0 = 103.82;
+// The map is stretched by MAP_SCALE so stations get room to breathe (markers keep their size).
+export const MAP_SCALE = 1.8;
 export function toWorld([lat, lng]){
-  return { x: (lng - LNG0) * 111.32, z: -(lat - LAT0) * 110.57 };
+  return { x: (lng - LNG0) * 111.32 * MAP_SCALE, z: -(lat - LAT0) * 110.57 * MAP_SCALE };
 }
