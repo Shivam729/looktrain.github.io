@@ -145,7 +145,22 @@ export class NetworkScene {
     this.controls = new OrbitControls(cam, r.domElement);
     Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.12, maxPolarAngle: 1.25, minDistance: 5, maxDistance: 140 * S, screenSpacePanning: false, rotateSpeed: 0.6, zoomSpeed: 0.9 });
     this.controls.target.set(2 * S, 0, 2 * S);
-    this.controls.addEventListener('start', () => { if(this.fly) this.fly = null; });
+    // Map-style controls: one finger / left drag moves the map; two fingers pinch-zoom and rotate/tilt;
+    // right drag (or ctrl/shift + drag) rotates on desktop.
+    this.controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+    this.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+    this.controls.panSpeed = 1;
+    this.controls.addEventListener('start', () => {
+      if(this.fly) this.fly = null;
+      this.dragStart = this.controls.target.clone();
+    });
+    // moving the map yourself stops following the selected train (Follow on the card turns it back on)
+    this.controls.addEventListener('change', () => {
+      if(this.follow && this.dragStart && this.controls.target.distanceTo(this.dragStart) > .3 && !this.fly){
+        this.follow = false; if(this.onFollowChange) this.onFollowChange(false);
+      }
+    });
+    this.controls.addEventListener('end', () => { this.dragStart = null; });
     this.controls.addEventListener('change', () => { this.dirty = true; });
 
     this.buildGround();
@@ -583,6 +598,7 @@ export class NetworkScene {
       if(delta.lengthSq() > 1e-6){
         delta.multiplyScalar(.08);
         this.controls.target.add(delta); this.camera.position.add(delta);
+        if(this.dragStart) this.dragStart.add(delta);
         this.dirty = true;
       }
     }
