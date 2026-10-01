@@ -421,44 +421,77 @@ function updateInsets(){
   }
 }
 addEventListener('resize', updateInsets);
-// Drag the sheet with the finger; snap to the nearest height on release (a flick picks the next one).
+// Bottom sheet gesture (phones), Apple-Maps style:
+//  - drag from anywhere in the sheet's header (handle, search bar, train header) to move it;
+//  - inside the card, pulling down at the top of the scroll shrinks the sheet and pushing up
+//    grows it until it's full, then the card scrolls normally;
+//  - the sheet follows the finger, then snaps to peek / half / full (a quick flick moves one step);
+//  - a tap on the handle toggles.
+// Built on touch events with preventDefault once we own the gesture, so Safari can't take it over.
 {
-  const grab = $('#grab'), sheet = $('#sheet');
-  let drag = null;
-  const heights = () => ({ peek: 196, half: Math.min(innerHeight * .6, 560), full: innerHeight - 24 - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-t')) || 0) - 60 });
-  grab.addEventListener('pointerdown', e => {
+  const sheet = $('#sheet'), card = $('#card'), grab = $('#grab');
+  const HEADER = '#grab, #search, .c-head, .c-where, .hint, .grp-h';
+  const order = ['peek', 'half', 'full'];
+  const heights = () => ({
+    peek: 196,
+    half: Math.min(innerHeight * .6, 560),
+    full: innerHeight - 84 - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-t')) || 0),
+  });
+  let g = null;     // active gesture
+  const begin = (y, target) => {
     if(innerWidth > 860) return;
-    grab.setPointerCapture(e.pointerId);
-    drag = { y: e.clientY, h: sheet.getBoundingClientRect().height, t: performance.now(), moved: false, lastY: e.clientY, lastT: performance.now(), v: 0 };
-    sheet.style.transition = 'none';
-  });
-  grab.addEventListener('pointermove', e => {
-    if(!drag) return;
-    const dy = e.clientY - drag.y;
-    if(Math.abs(dy) > 4) drag.moved = true;
+    g = { y0: y, h0: sheet.getBoundingClientRect().height, header: !!target.closest(HEADER), inCard: !!target.closest('#card'),
+          onGrab: !!target.closest('#grab'), decided: false, dragging: false, lastY: y, lastT: performance.now(), v: 0 };
+  };
+  const move = (y, ev) => {
+    if(!g) return;
+    const dy = y - g.y0;
+    if(!g.decided){
+      if(Math.abs(dy) < 7) return;
+      g.decided = true;
+      g.dragging = g.header || g.onGrab ||
+        (g.inCard && ((dy > 0 && card.scrollTop <= 0) || (dy < 0 && sheetState !== 'full')));
+      if(g.dragging){ sheet.style.transition = 'none'; g.y0 = y; g.h0 = sheet.getBoundingClientRect().height; g.t0 = performance.now(); }
+    }
+    if(!g.dragging) return;
+    if(ev && ev.cancelable) ev.preventDefault();
     const now = performance.now();
-    drag.v = (e.clientY - drag.lastY) / Math.max(1, now - drag.lastT); drag.lastY = e.clientY; drag.lastT = now;
+    g.v = (y - g.lastY) / Math.max(1, now - g.lastT); g.lastY = y; g.lastT = now;
     const H = heights();
-    sheet.style.height = Math.max(120, Math.min(H.full, drag.h - dy)) + 'px';
-  });
-  const end = e => {
-    if(!drag) return;
-    const d = drag; drag = null;
+    let h = g.h0 - (y - g.y0);
+    if(h > H.full) h = H.full + (h - H.full) * .25;               // gentle resistance past the ends
+    if(h < H.peek) h = H.peek - (H.peek - h) * .25;
+    sheet.style.height = h + 'px';
+  };
+  const finish = () => {
+    if(!g) return;
+    const d = g; g = null;
+    if(!d.decided){ if(d.onGrab) setSheetState(sheetState === 'peek' ? 'half' : 'peek'); return; }   // tap on handle
+    if(!d.dragging) return;
     const cur = sheet.getBoundingClientRect().height;
     sheet.style.transition = ''; sheet.style.height = '';
-    if(!d.moved){ setSheetState(sheetState === 'peek' ? 'half' : 'peek'); return; }   // tap toggles
-    const H = heights(), order = ['peek', 'half', 'full'];
+    const H = heights();
     let target = order.reduce((a, b) => Math.abs(H[b] - cur) < Math.abs(H[a] - cur) ? b : a);
-    if(target === sheetState && Math.abs(d.v) > .5){            // short flick: one step in that direction
-      const i = order.indexOf(sheetState);
-      target = order[Math.max(0, Math.min(2, i + (d.v < 0 ? 1 : -1)))];
+    const quick = performance.now() - d.t0 < 300 && Math.abs(d.lastY - d.y0) > 25;
+    if(Math.abs(d.v) > .45 || quick){                             // flick: one step past where it started
+      const i = order.indexOf(sheetState), dir = (quick ? d.lastY - d.y0 : d.v) < 0 ? 1 : -1;
+      const flick = order[Math.max(0, Math.min(2, i + dir))];
+      if(Math.sign(order.indexOf(flick) - order.indexOf(target)) === dir || target === sheetState) target = flick;
     }
     setSheetState(target);
   };
-  grab.addEventListener('pointerup', end);
-  grab.addEventListener('pointercancel', end);
+  // touch (iPhone / Android)
+  sheet.addEventListener('touchstart', e => { if(e.touches.length === 1) begin(e.touches[0].clientY, e.target); }, { passive: true });
+  sheet.addEventListener('touchmove', e => { if(e.touches.length === 1) move(e.touches[0].clientY, e); }, { passive: false });
+  sheet.addEventListener('touchend', finish);
+  sheet.addEventListener('touchcancel', finish);
+  // mouse (narrow desktop windows)
+  sheet.addEventListener('pointerdown', e => { if(e.pointerType === 'mouse'){ begin(e.clientY, e.target); if(g && (g.header || g.onGrab)) sheet.setPointerCapture(e.pointerId); } });
+  sheet.addEventListener('pointermove', e => { if(e.pointerType === 'mouse') move(e.clientY, e); });
+  sheet.addEventListener('pointerup', e => { if(e.pointerType === 'mouse') finish(); });
+  sheet.addEventListener('pointercancel', e => { if(e.pointerType === 'mouse') finish(); });
+  grab.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); setSheetState(sheetState === 'peek' ? 'half' : 'peek'); } });
 }
-
 
 addEventListener('resize', () => { document.querySelectorAll('.seg').forEach(moveLens); });
 
