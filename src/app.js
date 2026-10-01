@@ -41,7 +41,7 @@ function goLive(){ S.clock = { ...S.clock, mode: 'live', playing: false }; S.for
 const scene = new NetworkScene($('#stage'), { onPick: id => selectTrain(id) });
 window.__scene = scene;     // handy for debugging from the console
 window.__app = { S, findTrain: id => findTrain(id) };
-try{ scene.focusOnly = localStorage.getItem('lookup.focus') !== '0'; }catch(e){ scene.focusOnly = true; }
+scene.focusOnly = true;
 
 function poseOf(line, st){
   if(!st) return null;
@@ -64,18 +64,17 @@ function poseOf(line, st){
 }
 
 let lastUi = 0;
-// Train positions: recomputed every frame while a replay is playing, otherwise 10x a second
-// (a train moves well under a metre in 100ms at real speed). The camera still runs at full rate.
-let lastCompute = 0;
+// Train positions are recomputed every frame (~0.4ms for all trains) so they glide smoothly;
+// only a paused replay skips it.
 S.force = true;
 scene.beforeRender = () => {
   const now = performance.now();
-  const playing = S.clock.mode === 'sim' && S.clock.playing;
-  if(!playing && !S.force && now - lastCompute < 100){
+  const paused = S.clock.mode === 'sim' && !S.clock.playing;
+  if(paused && !S.force){
     if(now - lastUi > 200){ lastUi = now; updateUi(nowT()); }
     return;
   }
-  S.force = false; lastCompute = now;
+  S.force = false;
   const T = nowT();
   const list = [];
   S.statusCache.clear();
@@ -84,7 +83,8 @@ scene.beforeRender = () => {
       const st = status(trips, T);
       S.statusCache.set(id, { line, st });
       const pose = poseOf(line, st);
-      list.push({ id, line, pos: pose && pose.pos, dir: pose && pose.dir, state: pose ? pose.state : 'hidden' });
+      const moving = !!(st && st.kind === 'moving' && st.frac > 0 && st.frac < 1 && st.prev !== st.next);
+      list.push({ id, line, pos: pose && pose.pos, dir: pose && pose.dir, state: pose ? pose.state : 'hidden', moving });
     }
   }
   scene.syncTrains(list);
@@ -122,6 +122,7 @@ function findTrain(id){
 function selectTrain(id, { fly = true } = {}){
   const f = findTrain(id);
   if(!f){ toast(`No train ${id} in the ${S.day} timetable.`); return; }
+  if(!S.sel || S.sel.id !== id) scene.focusOnly = true;       // every new selection shows only that train
   S.sel = f; S.cardKey = ''; S.routeKey = '';
   if(!scene.trains.get(id)) scene.syncTrains([{ id, line: f.line, pos: null, state: 'hidden' }]);
   scene.select(id, { fly }); S.force = true;
@@ -368,7 +369,7 @@ $('#card').addEventListener('click', e => {
   if(e.target.closest('#cClose')){ clearSelection(); scene.overview(); return; }
   if(e.target.closest('#cFollow')){ scene.follow = !scene.follow; if(scene.follow && S.sel) scene.select(S.sel.id); S.cardKey = ''; return; }
   if(e.target.closest('#cOverview')){ scene.overview(); S.cardKey = ''; return; }
-  if(e.target.closest('#cFocus')){ scene.focusOnly = !scene.focusOnly; S.cardKey = ''; S.force = true; try{ localStorage.setItem('lookup.focus', scene.focusOnly ? '1' : '0'); }catch(err){} return; }
+  if(e.target.closest('#cFocus')){ scene.focusOnly = !scene.focusOnly; S.cardKey = ''; S.force = true; return; }
   if(e.target.closest('[data-earlier]')){ e.target.remove(); $('#cBody .stops').classList.remove('folded'); return; }
   const tab = e.target.closest('#cTabs button'); if(tab){ S.tab = tab.dataset.tab; S.cardKey = ''; updateUi(nowT()); }
 });

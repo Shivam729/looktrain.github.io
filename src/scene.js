@@ -26,10 +26,15 @@ const _zero = new THREE.Matrix4().makeScale(0, 0, 0);
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
 class LabelLayer {
   constructor(host){
+    // two layers: stations/depots (redrawn only when the camera moves) and trains (every frame)
+    this.canvasS = document.createElement('canvas'); this.canvasS.className = 'labels';
     this.canvas = document.createElement('canvas'); this.canvas.className = 'labels';
-    host.appendChild(this.canvas);
+    host.appendChild(this.canvasS); host.appendChild(this.canvas);
     this.el = this.canvas;                                  // dataset.zoom is set on it by the scene
-    this.ctx = this.canvas.getContext('2d');
+    this.ctxS = this.canvasS.getContext('2d');
+    this.ctxD = this.canvas.getContext('2d');
+    this.ctx = this.ctxD;
+    this.camKey = '';
     this.items = [];
     this.w = 1; this.h = 1; this.dpr = 1;
     this.widths = new Map();
@@ -41,8 +46,11 @@ class LabelLayer {
   }
   setSize(w, h, dpr){
     this.w = w; this.h = h; this.dpr = dpr;
-    this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr);
-    this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px';
+    for(const cv of [this.canvas, this.canvasS]){
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    }
+    this.camKey = '';
   }
   textW(font, text){
     const k = font + '|' + text;
@@ -59,12 +67,20 @@ class LabelLayer {
     c.fillStyle = fill; c.fill();
     if(stroke){ c.lineWidth = lw; c.strokeStyle = stroke; c.stroke(); }
   }
-  update(camera){
-    const c = this.ctx, W = this.w, H = this.h;
-    c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    c.clearRect(0, 0, W, H);
-    c.textBaseline = 'middle'; c.textAlign = 'center';
-    for(const pass of ['station', 'train', 'tag']){
+  // force: station labels changed (zoom level / line toggle) even if the camera didn't move
+  update(camera, force = false){
+    const W = this.w, H = this.h;
+    const e = camera.matrixWorld.elements, pm = camera.projectionMatrix.elements;
+    const key = e.map(v => v.toFixed(4)).join(',') + pm[8].toFixed(4) + pm[9].toFixed(4) + W + 'x' + H;
+    const passes = ['train', 'tag'];
+    if(force || key !== this.camKey){ this.camKey = key; passes.unshift('station'); }
+    for(const pass of passes){
+      const c = this.ctx = pass === 'station' ? this.ctxS : this.ctxD;
+      if(pass !== 'tag'){
+        c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+        c.clearRect(0, 0, W, H);
+        c.textBaseline = 'middle'; c.textAlign = 'center';
+      }
       for(const it of this.items){
         if(!it.want) continue;
         const kind = it.kind === 'inter' || it.kind === 'depot' ? 'station' : it.kind;
@@ -109,6 +125,7 @@ export class NetworkScene {
     this.useBloom = false;              // kept for compatibility; bloom was removed for legibility
     this.dirty = true;
     this.stats = { frames: 0, rendered: 0 };
+    this.fx = !this.reduced;          // pulses / trails / flowing route (off for reduced-motion users)
 
     const r = this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -190,7 +207,7 @@ export class NetworkScene {
         grp.add(casing, core);
         const len = curve.getLength();
         for(let d = 0.6; d < len; d += 1.2){ pillars.push(curve.getPointAt(d / len)); }
-        return { curve, codes };
+        return { curve, codes, idx: new Map(codes.map((c, i) => [c, i])), n: codes.length - 1 };
       });
       for(const [code, name] of [...LINES[line].main, ...(LINES[line].branch ? LINES[line].branch.stations : [])]){
         if(line === 'NS' && INTERCHANGE.has(code)) continue;
@@ -244,14 +261,43 @@ export class NetworkScene {
     this.allocTrains(256);
   }
   allocTrains(cap){
-    for(const k of ['outlineIM', 'bodyIM', 'arrowIM']) if(this[k]){ this.scene.remove(this[k]); this[k].dispose(); }
+    for(const k of ['outlineIM', 'bodyIM', 'arrowIM', 'haloIM', 'trailIM']) if(this[k]){ this.scene.remove(this[k]); this[k].dispose(); }
     const mk = (geo, mat) => { const m = new THREE.InstancedMesh(geo, mat, cap); m.count = 0; m.frustumCulled = false; this.scene.add(m); return m; };
     this.outlineIM = mk(this.trainGeo.outline, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide }));
     this.bodyIM = mk(this.trainGeo.body, new THREE.MeshBasicMaterial({ color: 0xffffff }));
     this.arrowIM = mk(this.trainGeo.arrow, new THREE.MeshBasicMaterial({ color: 0xffffff }));
     this.bodyIM.setColorAt(0, new THREE.Color(0xffffff));   // allocates instanceColor
+    // FX: a pulsing halo under every running train and a light trail behind moving ones.
+    const haloGeo = new THREE.PlaneGeometry(1, 1); haloGeo.rotateX(-Math.PI / 2);
+    haloGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(new Float32Array(cap), 1));
+    this.haloIM = mk(haloGeo, this.fxMat('halo'));
+    const trailGeo = new THREE.PlaneGeometry(1, 1); trailGeo.rotateX(-Math.PI / 2); trailGeo.translate(0, 0, -.5);
+    trailGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(new Float32Array(cap), 1));
+    this.trailIM = mk(trailGeo, this.fxMat('trail'));
+    this.haloIM.setColorAt(0, new THREE.Color(0xffffff)); this.trailIM.setColorAt(0, new THREE.Color(0xffffff));
+    this.haloIM.renderOrder = this.trailIM.renderOrder = -1;    // under the train bodies
     this.cap = cap;
     this.instancesDirty = true;
+  }
+
+  fxMat(kind){
+    if(!this.fxUniforms) this.fxUniforms = { uTime: { value: 0 } };
+    const frag = kind === 'halo'
+      ? `float d = length(vUv - .5) * 2.; float t = fract(uTime * .5 + vPh);
+         float ring = smoothstep(.13, 0., abs(d - t)) * (1. - t);
+         float glow = smoothstep(1., .0, d) * .22;
+         float a = (ring * .85 + glow) * step(d, 1.);`
+      : `float side = 1. - abs(vUv.x - .5) * 2.;
+         float tail = pow(1. - vUv.y, 1.6);
+         float shimmer = .65 + .35 * sin((vUv.y * 9. - uTime * 6.) + vPh * 6.283);
+         float a = side * side * tail * shimmer * .75;`;
+    return new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: this.fxUniforms,
+      vertexShader: `attribute float aPhase; varying vec2 vUv; varying vec3 vCol; varying float vPh;
+        void main(){ vUv = uv; vCol = instanceColor; vPh = aPhase; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.); }`,
+      fragmentShader: `uniform float uTime; varying vec2 vUv; varying vec3 vCol; varying float vPh;
+        void main(){ ${frag} if(a < .004) discard; gl_FragColor = vec4(vCol * a, a); }`,
+    });
   }
 
   buildSelection(){
@@ -259,15 +305,23 @@ export class NetworkScene {
     ring.rotation.x = -Math.PI / 2; ring.visible = false; this.scene.add(ring); this.selRing = ring;
     const halo = new THREE.Mesh(new THREE.RingGeometry(.74, 1.25, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .16, depthWrite: false, side: THREE.DoubleSide }));
     halo.rotation.x = -Math.PI / 2; halo.visible = false; this.scene.add(halo); this.selHalo = halo;
+    const halo2 = halo.clone(); halo2.material = halo.material.clone(); this.scene.add(halo2); this.selHalo2 = halo2;
+    const beamGeo = new THREE.CylinderGeometry(.04, .2, 6, 20, 1, true); beamGeo.translate(0, 3, 0);
+    this.beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uColor: { value: new THREE.Color(0xffffff) } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
+      fragmentShader: `varying vec2 vUv; uniform vec3 uColor; void main(){ float a = pow(1. - vUv.y, 2.) * .3; gl_FragColor = vec4(uColor * a, a); }`,
+    }));
+    this.beam.visible = false; this.scene.add(this.beam);
     const pinGeo = new THREE.CylinderGeometry(.025, .025, 1.6, 6); pinGeo.translate(0, .8, 0);
     this.pin = new THREE.Mesh(pinGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .75 }));
     this.pin.visible = false; this.scene.add(this.pin);
     this.routeMat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
-      uniforms: { uLen: { value: 10 } },
+      uniforms: { uLen: { value: 10 }, uTime: this.fxUniforms ? this.fxUniforms.uTime : { value: 0 } },
       vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
-      fragmentShader: `varying vec2 vUv; uniform float uLen;
-        void main(){ float s = fract(vUv.x * uLen * 1.6); if(s > .55) discard; gl_FragColor = vec4(vec3(1.), .95); }`,
+      fragmentShader: `varying vec2 vUv; uniform float uLen, uTime;
+        void main(){ float s = fract(vUv.x * uLen * 1.6 - uTime * 1.4); if(s > .55) discard; gl_FragColor = vec4(vec3(1.), .95); }`,
     });
     this.route = null;
     this.tagPos = new THREE.Vector3();
@@ -281,10 +335,10 @@ export class NetworkScene {
     return null;
   }
   poseBetween(line, a, b, f){
-    for(const { curve, codes } of this.curves[line]){
-      const ia = codes.indexOf(a.code), ib = codes.indexOf(b.code);
-      if(a.kind !== 'depot' && b.kind !== 'depot' && ia >= 0 && ib >= 0 && Math.abs(ia - ib) === 1){
-        const n = codes.length - 1, t = (ia + (ib - ia) * f) / n;
+    if(a.kind !== 'depot' && b.kind !== 'depot') for(const { curve, idx, n } of this.curves[line]){
+      const ia = idx.get(a.code), ib = idx.get(b.code);
+      if(ia !== undefined && ib !== undefined && Math.abs(ia - ib) === 1){
+        const t = (ia + (ib - ia) * f) / n;
         const pos = curve.getPoint(t);
         const tan = curve.getTangent(Math.min(1, Math.max(0, t))).multiplyScalar(Math.sign(ib - ia));
         return { pos, dir: tan };
@@ -324,6 +378,7 @@ export class NetworkScene {
         if(t.dir.distanceToSquared(_v) > 1e-8){ t.dir.copy(_v); if(vis) this.instancesDirty = true; }
       }
       if(t.state !== it.state){ t.state = it.state; t.label.state = it.state; this.instancesDirty = true; }
+      if(t.moving !== !!it.moving){ t.moving = !!it.moving; this.instancesDirty = true; }
     }
     for(const t of this.trains.values()){ if(!alive.has(t.id) && t.group.visible){ t.group.visible = false; this.instancesDirty = true; } }
     if(this.instancesDirty) this.dirty = true;
@@ -342,9 +397,20 @@ export class NetworkScene {
       this.arrowIM.setMatrixAt(i, t.state === 'svc' || t.state === 'off' ? _m : _zero);
       col.setHex(t.state === 'off' ? OFF_COLOR : t.state === 'idle' || t.state === 'hidden' ? IDLE_COLOR : TRAIN_COLORS[t.line]);
       this.bodyIM.setColorAt(i, col);
+      // halo: running trains only; trail: only while actually moving between stations
+      const running = t.state === 'svc' || t.state === 'off';
+      _m.compose(_v.set(t.pos.x, TRACK_Y + .02, t.pos.z), _q, _s.set(s * 3.2, 1, s * 3.2));
+      this.haloIM.setMatrixAt(i, running ? _m : _zero);
+      this.haloIM.setColorAt(i, col);
+      _m.compose(_v.set(t.pos.x, TRACK_Y + .1, t.pos.z), _q, _s.set(s * .34, 1, s * 3.4));
+      this.trailIM.setMatrixAt(i, running && t.moving ? _m : _zero);
+      this.trailIM.setColorAt(i, col);
+      if(t.phase === undefined){ let h = 0; for(const ch of t.id) h = (h * 31 + ch.charCodeAt(0)) % 997; t.phase = h / 997; }
+      this.haloIM.geometry.attributes.aPhase.array[i] = this.trailIM.geometry.attributes.aPhase.array[i] = t.phase;
     });
-    for(const m of [this.outlineIM, this.bodyIM, this.arrowIM]){ m.count = vis.length; m.instanceMatrix.needsUpdate = true; }
-    this.bodyIM.instanceColor.needsUpdate = true;
+    for(const m of [this.outlineIM, this.bodyIM, this.arrowIM, this.haloIM, this.trailIM]){ m.count = vis.length; m.instanceMatrix.needsUpdate = true; }
+    this.bodyIM.instanceColor.needsUpdate = this.haloIM.instanceColor.needsUpdate = this.trailIM.instanceColor.needsUpdate = true;
+    this.haloIM.geometry.attributes.aPhase.needsUpdate = this.trailIM.geometry.attributes.aPhase.needsUpdate = true;
     this.visibleList = vis;
     this.instancesDirty = false;
   }
@@ -358,11 +424,12 @@ export class NetworkScene {
     const prev = this.trains.get(this.selected);
     this.selected = id;
     const t = this.trains.get(id);
-    [this.selRing, this.selHalo, this.pin].forEach(m => m.visible = !!t);
+    [this.selRing, this.selHalo, this.selHalo2, this.pin, this.beam].forEach(m => m.visible = !!t);
     this.tag.want = !!t;
     this.dirty = this.instancesDirty = true;
     if(!t){ this.setRoute(null); return; }
     this.tag.text = id; this.tag.color = LINE_COLORS[t.line].css;
+    this.beam.material.uniforms.uColor.value.setHex(TRAIN_COLORS[t.line]);
     this.follow = true;
     if(fly){
       const off = this.camera.position.clone().sub(this.controls.target);
@@ -494,6 +561,8 @@ export class NetworkScene {
       this.dirty = true;
     }
     this.controls.update();           // fires 'change' (-> dirty) while damping settles
+    const now = performance.now() / 1000;
+    if(this.fx){ this.fxUniforms.uTime.value = now; this.dirty = true; }   // pulses, trails and flowing route animate
     if(!this.dirty) return;
     this.dirty = false;
     this.stats.rendered++;
@@ -507,25 +576,30 @@ export class NetworkScene {
     if(sel){
       const p = sel.pos;
       this.selRing.position.set(p.x, TRACK_Y + .05, p.z); this.selRing.scale.setScalar(k * 1.3);
-      this.selHalo.position.copy(this.selRing.position); this.selHalo.scale.setScalar(k * 1.3);
+      for(const [h, ph] of [[this.selHalo, 0], [this.selHalo2, .5]]){
+        const q = this.fx ? (now * .6 + ph) % 1 : .3;
+        h.position.copy(this.selRing.position); h.scale.setScalar(k * 1.3 * (1 + q * 1.8)); h.material.opacity = .45 * (1 - q) * (1 - q);
+      }
+      this.beam.position.set(p.x, TRACK_Y, p.z); this.beam.scale.set(k, 1, k);
       this.pin.position.set(p.x, TRACK_Y + .2, p.z); this.pin.scale.set(k, k * 1.6, k);
       this.tagPos.set(p.x, TRACK_Y + .2 + 2.6 * k, p.z);
     }
     // label visibility by zoom: far = major stations only, mid/near = everything + train numbers
     const zoom = camD < 18 ? 'near' : camD < 48 ? 'mid' : 'far';
     if(zoom !== this.zoom){
-      this.zoom = zoom; this.labels.el.dataset.zoom = zoom;
+      this.zoom = zoom; this.labels.el.dataset.zoom = zoom; this.labelsForce = true;
       for(const line of ['EW', 'NS']) for(const it of this.stationLabels[line]) it.want = this.visibleLines[line] && (zoom !== 'far' || it.major);
       for(const it of [...this.stationLabels.EW, ...this.stationLabels.NS, ...this.depotLabels]) it.showSub = zoom === 'near' || (zoom === 'mid' && it.major);
     }
     for(const line of ['EW', 'NS']) if(this.lineLabelState !== JSON.stringify(this.visibleLines)){
       for(const it of this.stationLabels[line]) it.want = this.visibleLines[line] && (zoom !== 'far' || it.major);
     }
+    if(this.lineLabelState !== JSON.stringify(this.visibleLines)) this.labelsForce = true;
     this.lineLabelState = JSON.stringify(this.visibleLines);
     for(const t of this.trains.values()){
       t.label.want = t.group.visible && t.id !== this.selected && t.state !== 'hidden' && (zoom !== 'far' || t.id === this.hovered);
     }
     this.renderer.render(this.scene, this.camera);
-    this.labels.update(this.camera);
+    this.labels.update(this.camera, this.labelsForce); this.labelsForce = false;
   }
 }

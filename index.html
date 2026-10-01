@@ -43,7 +43,9 @@
     border-radius:var(--r);
     background:
       linear-gradient(165deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.05) 38%, rgba(255,255,255,.03) 62%, rgba(255,255,255,.09) 100%),
-      rgba(12,19,32,.94);         /* solid tint: no backdrop blur, which re-blurs the map every frame */
+      rgba(10,16,28,.52);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,.42),            /* top rim light */
       inset 0 -1px 0 rgba(255,255,255,.07),
@@ -58,6 +60,10 @@
     background:linear-gradient(135deg, rgba(255,255,255,.7), rgba(255,255,255,.08) 28%, rgba(255,255,255,0) 50%, rgba(255,255,255,.06) 72%, rgba(255,255,255,.4));
     -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite:xor; mask-composite:exclude;
+  }
+  .glass::after{       /* fixed specular sheen (doesn't track the pointer) */
+    content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background:radial-gradient(120% 70% at 18% -10%, rgba(255,255,255,.14), rgba(255,255,255,.03) 45%, transparent 65%);
   }
   .glass.thin{ --r:999px; }
 
@@ -105,7 +111,7 @@
   .clock strong{ font-size:22px; font-weight:700; letter-spacing:-.3px; line-height:1.05; font-variant-numeric:tabular-nums; }
   .clock span{ font-size:10px; letter-spacing:1.4px; color:var(--amber); font-weight:700; display:flex; align-items:center; gap:6px; }
   .clock.live span{ color:#5dffa0; }
-  .clock.live span::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .clock.live span::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; box-shadow:0 0 10px currentColor; animation:pulse 1.6s infinite; }
   @keyframes pulse{ 50%{ opacity:.35; } }
 
   .net{ position:fixed; top:calc(92px + var(--safe-t)); left:16px; width:250px; padding:14px; z-index:4; }

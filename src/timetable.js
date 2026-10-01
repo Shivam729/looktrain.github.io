@@ -153,40 +153,37 @@ export function tableTime(t){             // "1.00:21:01" -> "00:21:01 +1"
 // ---------- where is a train at time T ----------
 export function status(trips, T){
   if(!trips || !trips.length) return null;
-  const first = trips[0], last = trips[trips.length - 1];
-  if(T < first.start){
-    const r0 = first.rows[0];
+  // Trips are sorted and don't overlap: binary-search the last one starting at or before T.
+  let lo = 0, hi = trips.length - 1, i = -1;
+  while(lo <= hi){ const m = (lo + hi) >> 1; if(trips[m].start <= T){ i = m; lo = m + 1; } else hi = m - 1; }
+  if(i < 0){
+    const first = trips[0], r0 = first.rows[0];
     return { kind: 'before', at: r0, text: r0.kind === 'depot' ? `In ${r0.code} depot` : `Stabled at ${r0.name}`,
       sub: `Launches ${hms(first.start)} · in ${inText(first.start - T)}`, trip: first, tripIdx: 0 };
   }
-  if(T > last.end){
-    const rl = last.rows[last.rows.length - 1];
+  const tr = trips[i];
+  if(T <= tr.end){
+    const rows = tr.rows;
+    let a = 0, b = rows.length - 1, k = rows.length - 1;           // first row with t > T
+    while(a <= b){ const m = (a + b) >> 1; if(rows[m].t > T){ k = m; b = m - 1; } else a = m + 1; }
+    const next = rows[k], prev = rows[Math.max(0, k - 1)];
+    const dwell = next.t - T <= 30 || (prev.t2 && T <= prev.t2);
+    let text, pos, frac = 0;
+    if(k === 0 || prev === next){ text = `At ${next.name}`; pos = 0; }
+    else if(dwell){ text = `At ${next.name}`; pos = k; frac = 1; }
+    else { frac = (T - prev.t) / (next.t - prev.t); text = `Between ${prev.name} and ${next.name}`; pos = k - 1 + frac; }
+    return { kind: 'moving', text, trip: tr, tripIdx: i, prev, next, frac, nextIdx: k, pos, off: next.off, est: next.est || prev.est };
+  }
+  const nx = trips[i + 1];
+  if(!nx){
+    const rl = tr.rows[tr.rows.length - 1];
     return { kind: 'after', at: rl, text: rl.kind === 'depot' ? `Withdrawn to ${rl.code}` : `Stabled at ${rl.name}`,
-      sub: `Arrived ${hms(last.end)}`, trip: last, tripIdx: trips.length - 1 };
+      sub: `Arrived ${hms(tr.end)}`, trip: tr, tripIdx: i };
   }
-  for(let i = 0; i < trips.length; i++){
-    const tr = trips[i];
-    if(T >= tr.start && T <= tr.end){
-      const rows = tr.rows;
-      let k = rows.findIndex(r => r.t > T);
-      if(k === -1) k = rows.length - 1;
-      const next = rows[k], prev = rows[Math.max(0, k - 1)];
-      const dwell = next.t - T <= 30 || (prev.t2 && T <= prev.t2);
-      let text, pos, frac = 0;
-      if(k === 0 || prev === next){ text = `At ${next.name}`; pos = 0; }
-      else if(dwell){ text = `At ${next.name}`; pos = k; frac = 1; }
-      else { frac = (T - prev.t) / (next.t - prev.t); text = `Between ${prev.name} and ${next.name}`; pos = k - 1 + frac; }
-      return { kind: 'moving', text, trip: tr, tripIdx: i, prev, next, frac, nextIdx: k, pos, off: next.off, est: next.est || prev.est };
-    }
-    const nx = trips[i + 1];
-    if(nx && T > tr.end && T < nx.start){
-      const at = tr.rows[tr.rows.length - 1];
-      return { kind: 'layover', at, text: at.kind === 'depot' ? `In ${at.code} depot` : `At ${at.name}`,
-        sub: `${DIR_NAMES[nx.dir]} from ${nx.rows[0].name} at ${hms(nx.start)} · in ${inText(nx.start - T)}`,
-        trip: nx, tripIdx: i + 1, waiting: true };
-    }
-  }
-  return null;
+  const at = tr.rows[tr.rows.length - 1];
+  return { kind: 'layover', at, text: at.kind === 'depot' ? `In ${at.code} depot` : `At ${at.name}`,
+    sub: `${DIR_NAMES[nx.dir]} from ${nx.rows[0].name} at ${hms(nx.start)} · in ${inText(nx.start - T)}`,
+    trip: nx, tripIdx: i + 1, waiting: true };
 }
 
 // ---------- encrypted data ----------
