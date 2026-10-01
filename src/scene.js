@@ -254,28 +254,42 @@ export class NetworkScene {
   }
 
   buildTrains(){
-    const g = new THREE.CapsuleGeometry(.17, .78, 3, 10); g.rotateX(Math.PI / 2);
-    const o = new THREE.CapsuleGeometry(.24, .82, 3, 10); o.rotateX(Math.PI / 2);
-    const a = new THREE.ConeGeometry(.13, .3, 10); a.rotateX(Math.PI / 2); a.translate(0, 0, .72);
-    this.trainGeo = { body: g, outline: o, arrow: a };
+    // Top-down silhouette (x = width, y = length forward), extruded upward: a long car body with
+    // a pointed nose, so it reads as a train and shows its direction like an arrow.
+    const silhouette = (w, len, nose) => {
+      const sh = new THREE.Shape();
+      sh.moveTo(-w, -len / 2); sh.lineTo(w, -len / 2); sh.lineTo(w, len / 2 - nose);
+      sh.lineTo(w * .35, len / 2); sh.lineTo(-w * .35, len / 2); sh.lineTo(-w, len / 2 - nose); sh.closePath();
+      return sh;
+    };
+    const extrude = (sh, depth) => {
+      const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false });
+      g.rotateX(-Math.PI / 2);                  // shape y -> world -z, extrusion -> +y
+      g.rotateY(Math.PI);                       // nose towards +z (direction of travel)
+      return g;
+    };
+    const body = extrude(silhouette(.17, 1.3, .32), .2);
+    const outline = extrude(silhouette(.235, 1.46, .38), .14); outline.translate(0, -.03, 0);
+    // dark windscreen across the nose + a window band along the side
+    const ws = new THREE.Shape();
+    ws.moveTo(-.13, .3); ws.lineTo(.13, .3); ws.lineTo(.07, .54); ws.lineTo(-.07, .54); ws.closePath();
+    const windscreen = extrude(ws, .01); windscreen.translate(0, .205, 0);
+    this.trainGeo = { body, outline, arrow: windscreen };
     this.allocTrains(256);
   }
   allocTrains(cap){
-    for(const k of ['outlineIM', 'bodyIM', 'arrowIM', 'haloIM', 'trailIM']) if(this[k]){ this.scene.remove(this[k]); this[k].dispose(); }
+    for(const k of ['outlineIM', 'bodyIM', 'arrowIM', 'trailIM']) if(this[k]){ this.scene.remove(this[k]); this[k].dispose(); }
     const mk = (geo, mat) => { const m = new THREE.InstancedMesh(geo, mat, cap); m.count = 0; m.frustumCulled = false; this.scene.add(m); return m; };
-    this.outlineIM = mk(this.trainGeo.outline, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide }));
+    this.outlineIM = mk(this.trainGeo.outline, new THREE.MeshBasicMaterial({ color: 0xffffff }));
     this.bodyIM = mk(this.trainGeo.body, new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    this.arrowIM = mk(this.trainGeo.arrow, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    this.arrowIM = mk(this.trainGeo.arrow, new THREE.MeshBasicMaterial({ color: 0x07101c }));   // windscreen
     this.bodyIM.setColorAt(0, new THREE.Color(0xffffff));   // allocates instanceColor
     // FX: a pulsing halo under every running train and a light trail behind moving ones.
-    const haloGeo = new THREE.PlaneGeometry(1, 1); haloGeo.rotateX(-Math.PI / 2);
-    haloGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(new Float32Array(cap), 1));
-    this.haloIM = mk(haloGeo, this.fxMat('halo'));
     const trailGeo = new THREE.PlaneGeometry(1, 1); trailGeo.rotateX(-Math.PI / 2); trailGeo.translate(0, 0, -.5);
     trailGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(new Float32Array(cap), 1));
     this.trailIM = mk(trailGeo, this.fxMat('trail'));
-    this.haloIM.setColorAt(0, new THREE.Color(0xffffff)); this.trailIM.setColorAt(0, new THREE.Color(0xffffff));
-    this.haloIM.renderOrder = this.trailIM.renderOrder = -1;    // under the train bodies
+    this.trailIM.setColorAt(0, new THREE.Color(0xffffff));
+    this.trailIM.renderOrder = -1;    // under the train bodies
     this.cap = cap;
     this.instancesDirty = true;
   }
@@ -289,8 +303,7 @@ export class NetworkScene {
          float a = (ring * .85 + glow) * step(d, 1.);`
       : `float side = 1. - abs(vUv.x - .5) * 2.;
          float tail = pow(1. - vUv.y, 1.6);
-         float shimmer = .65 + .35 * sin((vUv.y * 9. - uTime * 6.) + vPh * 6.283);
-         float a = side * side * tail * shimmer * .75;`;
+         float a = side * side * tail * .55;`;
     return new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: this.fxUniforms,
       vertexShader: `attribute float aPhase; varying vec2 vUv; varying vec3 vCol; varying float vPh;
@@ -394,23 +407,20 @@ export class NetworkScene {
       _m.compose(t.pos, _q, _s.setScalar(s));
       this.outlineIM.setMatrixAt(i, _m);
       this.bodyIM.setMatrixAt(i, _m);
-      this.arrowIM.setMatrixAt(i, t.state === 'svc' || t.state === 'off' ? _m : _zero);
+      this.arrowIM.setMatrixAt(i, _m);
       col.setHex(t.state === 'off' ? OFF_COLOR : t.state === 'idle' || t.state === 'hidden' ? IDLE_COLOR : TRAIN_COLORS[t.line]);
       this.bodyIM.setColorAt(i, col);
       // halo: running trains only; trail: only while actually moving between stations
       const running = t.state === 'svc' || t.state === 'off';
-      _m.compose(_v.set(t.pos.x, TRACK_Y + .02, t.pos.z), _q, _s.set(s * 3.2, 1, s * 3.2));
-      this.haloIM.setMatrixAt(i, running ? _m : _zero);
-      this.haloIM.setColorAt(i, col);
       _m.compose(_v.set(t.pos.x, TRACK_Y + .1, t.pos.z), _q, _s.set(s * .34, 1, s * 3.4));
       this.trailIM.setMatrixAt(i, running && t.moving ? _m : _zero);
       this.trailIM.setColorAt(i, col);
       if(t.phase === undefined){ let h = 0; for(const ch of t.id) h = (h * 31 + ch.charCodeAt(0)) % 997; t.phase = h / 997; }
-      this.haloIM.geometry.attributes.aPhase.array[i] = this.trailIM.geometry.attributes.aPhase.array[i] = t.phase;
+      this.trailIM.geometry.attributes.aPhase.array[i] = t.phase;
     });
-    for(const m of [this.outlineIM, this.bodyIM, this.arrowIM, this.haloIM, this.trailIM]){ m.count = vis.length; m.instanceMatrix.needsUpdate = true; }
-    this.bodyIM.instanceColor.needsUpdate = this.haloIM.instanceColor.needsUpdate = this.trailIM.instanceColor.needsUpdate = true;
-    this.haloIM.geometry.attributes.aPhase.needsUpdate = this.trailIM.geometry.attributes.aPhase.needsUpdate = true;
+    for(const m of [this.outlineIM, this.bodyIM, this.arrowIM, this.trailIM]){ m.count = vis.length; m.instanceMatrix.needsUpdate = true; }
+    this.bodyIM.instanceColor.needsUpdate = this.trailIM.instanceColor.needsUpdate = true;
+    this.trailIM.geometry.attributes.aPhase.needsUpdate = true;
     this.visibleList = vis;
     this.instancesDirty = false;
   }
@@ -424,7 +434,7 @@ export class NetworkScene {
     const prev = this.trains.get(this.selected);
     this.selected = id;
     const t = this.trains.get(id);
-    [this.selRing, this.selHalo, this.selHalo2, this.pin, this.beam].forEach(m => m.visible = !!t);
+    [this.selRing, this.pin, this.beam].forEach(m => m.visible = !!t);
     this.tag.want = !!t;
     this.dirty = this.instancesDirty = true;
     if(!t){ this.setRoute(null); return; }
@@ -576,10 +586,6 @@ export class NetworkScene {
     if(sel){
       const p = sel.pos;
       this.selRing.position.set(p.x, TRACK_Y + .05, p.z); this.selRing.scale.setScalar(k * 1.3);
-      for(const [h, ph] of [[this.selHalo, 0], [this.selHalo2, .5]]){
-        const q = this.fx ? (now * .6 + ph) % 1 : .3;
-        h.position.copy(this.selRing.position); h.scale.setScalar(k * 1.3 * (1 + q * 1.8)); h.material.opacity = .45 * (1 - q) * (1 - q);
-      }
       this.beam.position.set(p.x, TRACK_Y, p.z); this.beam.scale.set(k, 1, k);
       this.pin.position.set(p.x, TRACK_Y + .2, p.z); this.pin.scale.set(k, k * 1.6, k);
       this.tagPos.set(p.x, TRACK_Y + .2 + 2.6 * k, p.z);
