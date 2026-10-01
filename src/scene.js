@@ -12,6 +12,7 @@ import { LINES } from './timetable.js';
 //  - labels are plain DOM elements positioned with transform only, touched only when they move;
 //  - frames are rendered on demand: when the camera moves, a fly-to runs, or train positions change.
 const TRACK_Y = 0.5;
+const LANE = 0.24;          // each direction runs on its own track, this far either side of the centreline
 const OFF_COLOR = 0xffb100;
 const IDLE_COLOR = 0x8a96a8;
 const MAJOR = new Set(['JUR', 'CTH', 'RFP', 'TLK', 'PSR', 'CGA', 'MSP', 'WDL', 'AMK', 'BSH', 'TNM', 'OTP', 'DBG', 'YIS', 'KRJ', 'CLE', 'BNL', 'PYL', 'NEW']);
@@ -201,10 +202,15 @@ export class NetworkScene {
       this.curves[line] = paths.map(codes => {
         const curve = new THREE.CatmullRomCurve3(codes.map(c => this.stationVec(c)), false, 'centripetal', 0.5);
         const segs = codes.length * 12;
-        const casing = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.095, 6, false), casingMat);
-        const core = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.06, 6, false), new THREE.MeshBasicMaterial({ color: col.base }));
-        core.position.y = 0.06;       // sits above the casing so the line colour shows from above
-        grp.add(casing, core);
+        const casing = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, LANE + .1, 6, false), casingMat);
+        casing.scale.y = .35; casing.position.y = TRACK_Y * .65;      // flattened bed under both tracks
+        const railMat = new THREE.MeshBasicMaterial({ color: col.base });
+        for(const side of [1, -1]){
+          const rail = new THREE.Mesh(new THREE.TubeGeometry(this.offsetCurve(curve, side * LANE, segs), segs, 0.045, 5, false), railMat);
+          rail.position.y = 0.09;     // rails sit just above the bed
+          grp.add(rail);
+        }
+        grp.add(casing);
         const len = curve.getLength();
         for(let d = 0.6; d < len; d += 1.2){ pillars.push(curve.getPointAt(d / len)); }
         return { curve, codes, idx: new Map(codes.map((c, i) => [c, i])), n: codes.length - 1 };
@@ -242,12 +248,22 @@ export class NetworkScene {
     this.scene.add(inst);
   }
 
+  // Curve shifted sideways by `d` (positive = left of the direction the curve runs).
+  offsetCurve(curve, d, n){
+    const pts = [];
+    for(let i = 0; i <= n; i++){
+      const t = i / n, p = curve.getPoint(t), tg = curve.getTangent(t);
+      pts.push(new THREE.Vector3(p.x + tg.z * d, p.y, p.z - tg.x * d));
+    }
+    return new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+  }
+
   layoutDots(){
     this.dots.forEach(({ p, inter, line }, i) => {
       const on = this.visibleLines[line] || inter;
-      _m.compose(_v.set(p.x, TRACK_Y + .1, p.z), _q.identity(), _s.setScalar(on ? (inter ? .3 : .19) : 0).setY(on ? 1 : 0));
+      _m.compose(_v.set(p.x, TRACK_Y + .1, p.z), _q.identity(), _s.setScalar(on ? (inter ? .48 : .36) : 0).setY(on ? 1 : 0));
       this.ringIM.setMatrixAt(i, _m);
-      _m.compose(_v.set(p.x, TRACK_Y + .13, p.z), _q.identity(), _s.setScalar(on ? (inter ? .23 : .13) : 0).setY(on ? 1 : 0));
+      _m.compose(_v.set(p.x, TRACK_Y + .13, p.z), _q.identity(), _s.setScalar(on ? (inter ? .4 : .28) : 0).setY(on ? 1 : 0));
       this.dotIM.setMatrixAt(i, _m);
     });
     this.ringIM.instanceMatrix.needsUpdate = this.dotIM.instanceMatrix.needsUpdate = true;
@@ -384,12 +400,14 @@ export class NetworkScene {
       if(!it.pos) vis = false;
       if(vis !== t.group.visible){ t.group.visible = vis; this.instancesDirty = true; }
       if(!it.pos) continue;
-      const dx = t.pos.x - it.pos.x, dz = t.pos.z - it.pos.z;      // compare on the ground plane (y is fixed)
-      if(!t.seen || dx * dx + dz * dz > 1e-8){ t.pos.set(it.pos.x, TRACK_Y + .2, it.pos.z); t.seen = true; if(vis) this.instancesDirty = true; }
       if(it.dir && it.dir.lengthSq() > 1e-6){
         _v.copy(it.dir).setY(0).normalize();
         if(t.dir.distanceToSquared(_v) > 1e-8){ t.dir.copy(_v); if(vis) this.instancesDirty = true; }
       }
+      // place the train on its direction's track: offset to the left of its heading
+      const x = it.pos.x + t.dir.z * LANE, z = it.pos.z - t.dir.x * LANE;
+      const dx = t.pos.x - x, dz = t.pos.z - z;                    // compare on the ground plane (y is fixed)
+      if(!t.seen || dx * dx + dz * dz > 1e-8){ t.pos.set(x, TRACK_Y + .2, z); t.seen = true; if(vis) this.instancesDirty = true; }
       if(t.state !== it.state){ t.state = it.state; t.label.state = it.state; this.instancesDirty = true; }
       if(t.moving !== !!it.moving){ t.moving = !!it.moving; this.instancesDirty = true; }
     }
@@ -404,7 +422,7 @@ export class NetworkScene {
     vis.forEach((t, i) => {
       const s = k * (t.id === this.selected ? 1.3 : 1);
       _q.setFromUnitVectors(_v.set(0, 0, 1), t.dir.lengthSq() ? t.dir : _v);
-      _m.compose(t.pos, _q, _s.setScalar(s));
+      _m.compose(t.pos, _q, _s.set(Math.min(s, .62), s, s));   // slim enough that the two directions stay apart
       this.outlineIM.setMatrixAt(i, _m);
       this.bodyIM.setMatrixAt(i, _m);
       this.arrowIM.setMatrixAt(i, _m);
@@ -452,7 +470,12 @@ export class NetworkScene {
     if(this.route){ this.scene.remove(this.route); this.route.geometry.dispose(); this.route = null; }
     this.dirty = true;
     if(!points || points.length < 2) return;
-    const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(p.x, TRACK_Y + .12, p.z)), false, 'centripetal');
+    const shifted = points.map((p, i) => {
+      const a = points[Math.max(0, i - 1)], b = points[Math.min(points.length - 1, i + 1)];
+      _v.set(b.x - a.x, 0, b.z - a.z); if(_v.lengthSq() < 1e-10) _v.set(0, 0, 1); _v.normalize();
+      return new THREE.Vector3(p.x + _v.z * LANE, TRACK_Y + .12, p.z - _v.x * LANE);
+    });
+    const curve = new THREE.CatmullRomCurve3(shifted, false, 'centripetal');
     const len = curve.getLength();
     this.routeMat.uniforms.uLen.value = len;
     this.route = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(16, Math.round(len * 10)), .045, 5, false), this.routeMat);
