@@ -32,9 +32,10 @@ function nowT(){
 }
 function setSim(t, playing = S.clock.playing){
   S.clock = { ...S.clock, mode: 'sim', base: t, real0: performance.now(), playing };
+  S.force = true;
   syncDock();
 }
-function goLive(){ S.clock = { ...S.clock, mode: 'live', playing: false }; syncDock(); }
+function goLive(){ S.clock = { ...S.clock, mode: 'live', playing: false }; S.force = true; syncDock(); }
 
 // ---------- scene ----------
 const scene = new NetworkScene($('#stage'), { onPick: id => selectTrain(id) });
@@ -63,7 +64,18 @@ function poseOf(line, st){
 }
 
 let lastUi = 0;
+// Train positions: recomputed every frame while a replay is playing, otherwise 10x a second
+// (a train moves well under a metre in 100ms at real speed). The camera still runs at full rate.
+let lastCompute = 0;
+S.force = true;
 scene.beforeRender = () => {
+  const now = performance.now();
+  const playing = S.clock.mode === 'sim' && S.clock.playing;
+  if(!playing && !S.force && now - lastCompute < 100){
+    if(now - lastUi > 200){ lastUi = now; updateUi(nowT()); }
+    return;
+  }
+  S.force = false; lastCompute = now;
   const T = nowT();
   const list = [];
   S.statusCache.clear();
@@ -76,7 +88,6 @@ scene.beforeRender = () => {
     }
   }
   scene.syncTrains(list);
-  const now = performance.now();
   if(now - lastUi > 200){ lastUi = now; updateUi(T); }
 };
 
@@ -97,7 +108,7 @@ async function loadDay(day){
   S.loading = null;
   renderDays();
   if(S.sel && !findTrain(S.sel.id)) clearSelection();
-  S.cardKey = '';
+  S.cardKey = ''; S.force = true;
 }
 
 function findTrain(id){
@@ -113,14 +124,14 @@ function selectTrain(id, { fly = true } = {}){
   if(!f){ toast(`No train ${id} in the ${S.day} timetable.`); return; }
   S.sel = f; S.cardKey = ''; S.routeKey = '';
   if(!scene.trains.get(id)) scene.syncTrains([{ id, line: f.line, pos: null, state: 'hidden' }]);
-  scene.select(id, { fly });
+  scene.select(id, { fly }); S.force = true;
   $('#q').value = id;
   document.body.classList.add('has-sel');
   setSheet(true);
   updateUi(nowT());
 }
 function clearSelection(){
-  S.sel = null; S.cardKey = ''; scene.select(null); scene.setRoute(null);
+  S.sel = null; S.cardKey = ''; scene.select(null); scene.setRoute(null); S.force = true;
   document.body.classList.remove('has-sel');
   $('#q').value = '';
   updateUi(nowT());
@@ -348,7 +359,7 @@ $('#card').addEventListener('click', e => {
   if(e.target.closest('#cClose')){ clearSelection(); scene.overview(); return; }
   if(e.target.closest('#cFollow')){ scene.follow = !scene.follow; if(scene.follow && S.sel) scene.select(S.sel.id); S.cardKey = ''; return; }
   if(e.target.closest('#cOverview')){ scene.overview(); S.cardKey = ''; return; }
-  if(e.target.closest('#cFocus')){ scene.focusOnly = !scene.focusOnly; S.cardKey = ''; try{ localStorage.setItem('lookup.focus', scene.focusOnly ? '1' : '0'); }catch(err){} return; }
+  if(e.target.closest('#cFocus')){ scene.focusOnly = !scene.focusOnly; S.cardKey = ''; S.force = true; try{ localStorage.setItem('lookup.focus', scene.focusOnly ? '1' : '0'); }catch(err){} return; }
   if(e.target.closest('[data-earlier]')){ e.target.remove(); $('#cBody .stops').classList.remove('folded'); return; }
   const tab = e.target.closest('#cTabs button'); if(tab){ S.tab = tab.dataset.tab; S.cardKey = ''; updateUi(nowT()); }
 });
@@ -366,7 +377,7 @@ $('#speeds').addEventListener('click', e => {
 $('#scrub').addEventListener('input', e => setSim(+e.target.value, S.clock.mode === 'sim' && S.clock.playing));
 document.querySelectorAll('.lines button').forEach(b => b.addEventListener('click', () => {
   const l = b.dataset.line, on = !b.classList.contains('on');
-  b.classList.toggle('on', on); scene.setLineVisible(l, on);
+  b.classList.toggle('on', on); scene.setLineVisible(l, on); S.force = true;
 }));
 $('#overviewBtn').addEventListener('click', () => scene.overview());
 $('#homeBtn').addEventListener('click', () => scene.overview());
@@ -428,7 +439,7 @@ addEventListener('resize', updateInsets);
     if(!d.moved){ setSheetState(sheetState === 'peek' ? 'half' : 'peek'); return; }   // tap toggles
     const H = heights(), order = ['peek', 'half', 'full'];
     let target = order.reduce((a, b) => Math.abs(H[b] - cur) < Math.abs(H[a] - cur) ? b : a);
-    if(Math.abs(d.v) > .5){                                     // flick: move one step in that direction
+    if(target === sheetState && Math.abs(d.v) > .5){            // short flick: one step in that direction
       const i = order.indexOf(sheetState);
       target = order[Math.max(0, Math.min(2, i + (d.v < 0 ? 1 : -1)))];
     }
@@ -438,14 +449,23 @@ addEventListener('resize', updateInsets);
   grab.addEventListener('pointercancel', end);
 }
 
-// specular highlight that follows the pointer across glass
-addEventListener('pointermove', e => {
-  for(const g of document.querySelectorAll('.glass')){
-    const r = g.getBoundingClientRect();
-    g.style.setProperty('--mx', (e.clientX - r.left) + 'px');
-    g.style.setProperty('--my', (e.clientY - r.top) + 'px');
-  }
-}, { passive: true });
+// specular highlight that follows the pointer: only the glass panel under it, at most once per frame
+{
+  let q = null;
+  addEventListener('pointermove', e => {
+    if(e.pointerType !== 'mouse') return;
+    const first = !q; q = { x: e.clientX, y: e.clientY, t: e.target };
+    if(!first) return;
+    requestAnimationFrame(() => {
+      const { x, y, t } = q; q = null;
+      const g = t && t.closest && t.closest('.glass');
+      if(!g) return;
+      const r = g.getBoundingClientRect();
+      g.style.setProperty('--mx', (x - r.left) + 'px');
+      g.style.setProperty('--my', (y - r.top) + 'px');
+    });
+  }, { passive: true });
+}
 addEventListener('resize', () => { document.querySelectorAll('.seg').forEach(moveLens); });
 
 let toastT;
