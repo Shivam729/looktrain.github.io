@@ -39,7 +39,8 @@ function goLive(){ S.clock = { ...S.clock, mode: 'live', playing: false }; S.for
 
 // ---------- scene ----------
 const scene = new NetworkScene($('#stage'), { onPick: id => selectTrain(id) });
-window.__scene = scene;     // handy for debugging from the console
+window.__scene = scene;
+scene.onFollowChange = () => { S.cardKey = ''; };   // refresh the Follow button     // handy for debugging from the console
 window.__app = { S, findTrain: id => findTrain(id) };
 scene.focusOnly = true;
 
