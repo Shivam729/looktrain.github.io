@@ -111,7 +111,7 @@
   .clock strong{ font-size:22px; font-weight:700; letter-spacing:-.3px; line-height:1.05; font-variant-numeric:tabular-nums; }
   .clock span{ font-size:10px; letter-spacing:1.4px; color:var(--amber); font-weight:700; display:flex; align-items:center; gap:6px; }
   .clock.live span{ color:#5dffa0; }
-  .clock.live span::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; box-shadow:0 0 10px currentColor; animation:pulse 1.6s infinite; }
+  .clock.live span::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
   @keyframes pulse{ 50%{ opacity:.35; } }
 
   .net{ position:fixed; top:calc(92px + var(--safe-t)); left:16px; width:250px; padding:14px; z-index:4; }
