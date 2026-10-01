@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>LookTrain · Live Network</title>
-<meta name="description" content="Where every EWL and NSL train is scheduled to be, right now.">
+<title>Thomas the Tracking Engine</title>
+<meta name="description" content="Every really useful engine on the EWL and NSL, where it is scheduled to be right now.">
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -303,6 +303,7 @@
   @media (max-width:860px){
     .topbar{ flex-wrap:wrap; left:10px; right:10px; top:calc(10px + var(--safe-t)); padding:8px 8px 8px 12px; gap:8px; }
     .brand small{ display:none; }
+    .brand b{ font-size:14.5px; line-height:1.12; display:block; max-width:170px; }
     .topbar .seg{ order:3; width:100%; margin:0; }
     .topbar .seg button{ padding:7px 6px; font-size:12.5px; }
     .clock{ margin-left:auto; min-width:0; }
@@ -349,7 +350,7 @@
 <header class="topbar glass ui">
   <div class="brand">
     <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#0b1a14"/><rect x="16" y="10" width="32" height="36" rx="8" fill="#35e27a"/><rect x="21" y="16" width="22" height="12" rx="2" fill="#0b1a14"/><circle cx="24" cy="37" r="3" fill="#0b1a14"/><circle cx="40" cy="37" r="3" fill="#0b1a14"/><path d="M22 47 L16 56 M42 47 L48 56" stroke="#35e27a" stroke-width="4" stroke-linecap="round"/></svg>
-    <div><b>LookTrain</b><small id="versions">Live network</small></div>
+    <div><b>Thomas the Tracking Engine</b><small id="versions">Really useful engines</small></div>
   </div>
   <div class="seg" id="days">
     <span class="lens"></span>
@@ -403,8 +404,8 @@
 <div class="lock">
   <div class="glass" id="lockCard">
     <svg width="56" height="56" viewBox="0 0 64 64" aria-hidden="true" style="filter:drop-shadow(0 0 18px rgba(80,255,160,.55))"><rect width="64" height="64" rx="16" fill="#0b1a14"/><rect x="16" y="10" width="32" height="36" rx="8" fill="#35e27a"/><rect x="21" y="16" width="22" height="12" rx="2" fill="#0b1a14"/><circle cx="24" cy="37" r="3" fill="#0b1a14"/><circle cx="40" cy="37" r="3" fill="#0b1a14"/><path d="M22 47 L16 56 M42 47 L48 56" stroke="#35e27a" stroke-width="4" stroke-linecap="round"/></svg>
-    <h1>LookTrain</h1>
-    <p>Every EWL &amp; NSL train, where it should be right now.<br>Enter the password once on this device.</p>
+    <h1>Thomas the Tracking Engine</h1>
+    <p>Every really useful engine on the EWL &amp; NSL — where it should be right now.<br>Enter the password once on this device.</p>
     <form id="lockForm" autocomplete="on">
       <input type="text" name="username" value="looktrain" autocomplete="username" hidden>
       <input type="password" id="lockPass" placeholder="Password" autocomplete="current-password" required>
