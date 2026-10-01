@@ -21,32 +21,79 @@ const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const _v = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 const _zero = new THREE.Matrix4().makeScale(0, 0, 0);
 
-// Minimal DOM label layer: one absolutely positioned element per label, moved with translate3d.
+// All labels are painted onto one 2D canvas over the WebGL view (no DOM elements to lay out or
+// composite). Repainted only when the 3D view is re-rendered.
+const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
 class LabelLayer {
   constructor(host){
-    this.el = document.createElement('div'); this.el.className = 'labels'; host.appendChild(this.el);
+    this.canvas = document.createElement('canvas'); this.canvas.className = 'labels';
+    host.appendChild(this.canvas);
+    this.el = this.canvas;                                  // dataset.zoom is set on it by the scene
+    this.ctx = this.canvas.getContext('2d');
     this.items = [];
-    this.w = 1; this.h = 1;
+    this.w = 1; this.h = 1; this.dpr = 1;
+    this.widths = new Map();
   }
-  add(el, pos, { dy = 0, anchor = 'below' } = {}){
-    const it = { el, pos, dy, anchor, want: true, shown: true, x: -1e9, y: -1e9 };
-    el.classList.add('lbl', anchor === 'above' ? 'lbl-above' : 'lbl-below');
-    this.el.appendChild(el); this.items.push(it); return it;
+  // spec: {kind: 'station'|'inter'|'depot'|'train'|'tag', text, sub, color}
+  add(spec, pos, { dy = 0 } = {}){
+    const it = { ...spec, pos, dy, want: true, state: null, hover: false, showSub: false };
+    this.items.push(it); return it;
   }
-  setSize(w, h){ this.w = w; this.h = h; }
+  setSize(w, h, dpr){
+    this.w = w; this.h = h; this.dpr = dpr;
+    this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr);
+    this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px';
+  }
+  textW(font, text){
+    const k = font + '|' + text;
+    let v = this.widths.get(k);
+    if(v === undefined){ this.ctx.font = font; v = this.ctx.measureText(text).width; this.widths.set(k, v); }
+    return v;
+  }
+  pill(x, y, w, h, r, fill, stroke, lw){
+    const c = this.ctx;
+    c.beginPath();
+    c.moveTo(x + r, y); c.lineTo(x + w - r, y); c.arcTo(x + w, y, x + w, y + r, r); c.lineTo(x + w, y + h - r);
+    c.arcTo(x + w, y + h, x + w - r, y + h, r); c.lineTo(x + r, y + h); c.arcTo(x, y + h, x, y + h - r, r);
+    c.lineTo(x, y + r); c.arcTo(x, y, x + r, y, r); c.closePath();
+    c.fillStyle = fill; c.fill();
+    if(stroke){ c.lineWidth = lw; c.strokeStyle = stroke; c.stroke(); }
+  }
   update(camera){
-    for(const it of this.items){
-      let show = it.want;
-      if(show){
+    const c = this.ctx, W = this.w, H = this.h;
+    c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    c.clearRect(0, 0, W, H);
+    c.textBaseline = 'middle'; c.textAlign = 'center';
+    for(const pass of ['station', 'train', 'tag']){
+      for(const it of this.items){
+        if(!it.want) continue;
+        const kind = it.kind === 'inter' || it.kind === 'depot' ? 'station' : it.kind;
+        if(kind !== pass) continue;
         _v.copy(it.pos).project(camera);
-        if(_v.z > 1 || _v.x < -1.1 || _v.x > 1.1 || _v.y < -1.1 || _v.y > 1.1) show = false;
-      }
-      if(show !== it.shown){ it.el.style.display = show ? '' : 'none'; it.shown = show; if(show){ it.x = it.y = -1e9; } }
-      if(!show) continue;
-      const x = (_v.x + 1) / 2 * this.w, y = (1 - _v.y) / 2 * this.h + it.dy;
-      if(Math.abs(x - it.x) > .25 || Math.abs(y - it.y) > .25){
-        it.x = x; it.y = y;
-        it.el.style.transform = `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0)`;
+        if(_v.z > 1 || _v.x < -1.05 || _v.x > 1.05 || _v.y < -1.05 || _v.y > 1.05) continue;
+        const x = (_v.x + 1) / 2 * W, y = (1 - _v.y) / 2 * H + it.dy;
+        if(pass === 'station'){
+          const font = `750 10px ${FONT}`, tw = this.textW(font, it.text), w = tw + 12, h = 17;
+          const inter = it.kind === 'inter', depot = it.kind === 'depot';
+          this.pill(x - w / 2, y, w, h, 5, inter ? '#fff' : 'rgba(5,9,16,.9)', inter ? null : (depot ? '#8fb4e8' : it.color), 1.5);
+          c.font = font; c.fillStyle = inter ? '#05090f' : depot ? '#cfe0ff' : '#fff';
+          c.fillText(it.text, x, y + h / 2 + .5);
+          if(it.showSub && it.sub){
+            const f2 = `600 10.5px ${FONT}`; c.font = f2;
+            c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.85)'; c.lineJoin = 'round';
+            c.strokeText(it.sub, x, y + h + 8); c.fillStyle = '#e8eef8'; c.fillText(it.sub, x, y + h + 8);
+          }
+        } else if(pass === 'train'){
+          const font = `800 11px ${FONT}`, tw = this.textW(font, it.text), w = tw + 12, h = 16;
+          const border = it.state === 'off' ? '#ffb100' : it.state === 'idle' ? '#8a96a8' : it.color;
+          this.pill(x - w / 2, y - h, w, h, h / 2, it.hover ? '#fff' : 'rgba(5,9,16,.9)', border, 1.5);
+          c.font = font; c.fillStyle = it.hover ? '#05090f' : it.state === 'off' ? '#ffe2a6' : it.state === 'idle' ? '#c9d2de' : '#fff';
+          c.fillText(it.text, x, y - h / 2 + .5);
+        } else {
+          const font = `800 14px ${FONT}`, tw = this.textW(font, it.text), w = tw + 22, h = 24;
+          this.pill(x - w / 2, y - h, w, h, h / 2, '#fff', it.color, 2.5);
+          c.font = font; c.fillStyle = '#05090f'; c.fillText(it.text, x, y - h / 2 + .5);
+        }
       }
     }
   }
@@ -64,8 +111,7 @@ export class NetworkScene {
     this.stats = { frames: 0, rendered: 0 };
 
     const r = this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    // Retina laptops at 2x push 4x the pixels for no visible gain on a flat map; labels are DOM and stay crisp.
-    r.setPixelRatio(Math.min(devicePixelRatio, innerWidth > 860 ? 1.5 : 2));
+    r.setPixelRatio(Math.min(devicePixelRatio, 2));
     r.toneMapping = THREE.NoToneMapping;
     r.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(r.domElement);
@@ -151,11 +197,7 @@ export class NetworkScene {
         const p = this.stationVec(code);
         const inter = INTERCHANGE.has(code);
         dots.push({ p, inter, line });
-        const el = document.createElement('div');
-        el.className = 'st-label' + (MAJOR.has(code) ? ' major' : '') + (inter ? ' inter' : '');
-        el.innerHTML = `<b>${code}</b><span>${name}</span>`;
-        el.style.setProperty('--c', inter ? '#fff' : col.css);
-        const it = this.labels.add(el, p.clone().setY(TRACK_Y + .1), { dy: 7, anchor: 'below' });
+        const it = this.labels.add({ kind: inter ? 'inter' : 'station', text: code, sub: name, color: col.css }, p.clone().setY(TRACK_Y + .1), { dy: 7 });
         it.major = MAJOR.has(code); it.kind = 'station'; it.line = line;
         this.stationLabels[line].push(it);
       }
@@ -175,9 +217,7 @@ export class NetworkScene {
       hex.position.copy(p); this.scene.add(hex);
       const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CylinderGeometry(1.1, 1.1, .04, 6)), new THREE.LineBasicMaterial({ color: 0x8fb4e8 }));
       edge.position.copy(p); this.scene.add(edge);
-      const el = document.createElement('div'); el.className = 'st-label depot major';
-      el.innerHTML = `<b>${code}</b><span>${name} Depot</span>`;
-      const it = this.labels.add(el, p.clone(), { dy: 12, anchor: 'below' }); it.major = true; it.kind = 'depot';
+      const it = this.labels.add({ kind: 'depot', text: code, sub: name + ' Depot' }, p.clone(), { dy: 12 }); it.major = true;
       this.depotLabels.push(it);
     }
     const inst = new THREE.InstancedMesh(pillarGeo, pillarMat, pillars.length);
@@ -230,9 +270,8 @@ export class NetworkScene {
         void main(){ float s = fract(vUv.x * uLen * 1.6); if(s > .55) discard; gl_FragColor = vec4(vec3(1.), .95); }`,
     });
     this.route = null;
-    const el = document.createElement('div'); el.className = 'train-tag';
     this.tagPos = new THREE.Vector3();
-    this.tag = this.labels.add(el, this.tagPos, { dy: -10, anchor: 'above' }); this.tag.want = false;
+    this.tag = this.labels.add({ kind: 'tag', text: '', color: '#fff' }, this.tagPos, { dy: -10 }); this.tag.want = false;
   }
 
   // ---------- geometry helpers used by the app ----------
@@ -258,11 +297,9 @@ export class NetworkScene {
 
   // ---------- trains ----------
   makeTrain(id, line){
-    const el = document.createElement('div'); el.className = 'tr-label'; el.textContent = id;
-    el.style.setProperty('--c', LINE_COLORS[line].css);
     const pos = new THREE.Vector3();
-    const label = this.labels.add(el, pos, { dy: -9, anchor: 'above' });
-    label.want = false; label.kind = 'train';
+    const label = this.labels.add({ kind: 'train', text: id, color: LINE_COLORS[line].css }, pos, { dy: -9 });
+    label.want = false;
     const t = { id, line, pos, dir: new THREE.Vector3(0, 0, 1), state: null, seen: false, label,
                 group: { visible: false, position: pos } };     // `group` keeps the old shape for callers
     this.trains.set(id, t);
@@ -286,7 +323,7 @@ export class NetworkScene {
         _v.copy(it.dir).setY(0).normalize();
         if(t.dir.distanceToSquared(_v) > 1e-8){ t.dir.copy(_v); if(vis) this.instancesDirty = true; }
       }
-      if(t.state !== it.state){ t.state = it.state; t.label.el.dataset.state = it.state; this.instancesDirty = true; }
+      if(t.state !== it.state){ t.state = it.state; t.label.state = it.state; this.instancesDirty = true; }
     }
     for(const t of this.trains.values()){ if(!alive.has(t.id) && t.group.visible){ t.group.visible = false; this.instancesDirty = true; } }
     if(this.instancesDirty) this.dirty = true;
@@ -319,16 +356,13 @@ export class NetworkScene {
 
   select(id, { fly = true } = {}){
     const prev = this.trains.get(this.selected);
-    if(prev) prev.label.el.classList.remove('sel');
     this.selected = id;
     const t = this.trains.get(id);
     [this.selRing, this.selHalo, this.pin].forEach(m => m.visible = !!t);
     this.tag.want = !!t;
     this.dirty = this.instancesDirty = true;
     if(!t){ this.setRoute(null); return; }
-    t.label.el.classList.add('sel');
-    this.tag.el.textContent = id;
-    this.tag.el.style.setProperty('--c', LINE_COLORS[t.line].css);
+    this.tag.text = id; this.tag.color = LINE_COLORS[t.line].css;
     this.follow = true;
     if(fly){
       const off = this.camera.position.clone().sub(this.controls.target);
@@ -406,9 +440,9 @@ export class NetworkScene {
         const id = this.pick(x, y, 18);
         el.style.cursor = id ? 'pointer' : '';
         if(id !== this.hovered){
-          const old = this.trains.get(this.hovered); if(old) old.label.el.classList.remove('hover');
+          const old = this.trains.get(this.hovered); if(old) old.label.hover = false;
           this.hovered = id;
-          const t = this.trains.get(id); if(t) t.label.el.classList.add('hover');
+          const t = this.trains.get(id); if(t) t.label.hover = true;
           this.dirty = true;
           if(this.onHover) this.onHover(id);
         }
@@ -434,7 +468,7 @@ export class NetworkScene {
     const w = this.host.clientWidth, h = this.host.clientHeight;
     if(!w || !h) return;
     this.camera.aspect = w / h; this.applyInsets(); this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h); this.labels.setSize(w, h);
+    this.renderer.setSize(w, h); this.labels.setSize(w, h, this.renderer.getPixelRatio());
     this.dirty = true;
   }
 
@@ -482,6 +516,7 @@ export class NetworkScene {
     if(zoom !== this.zoom){
       this.zoom = zoom; this.labels.el.dataset.zoom = zoom;
       for(const line of ['EW', 'NS']) for(const it of this.stationLabels[line]) it.want = this.visibleLines[line] && (zoom !== 'far' || it.major);
+      for(const it of [...this.stationLabels.EW, ...this.stationLabels.NS, ...this.depotLabels]) it.showSub = zoom === 'near' || (zoom === 'mid' && it.major);
     }
     for(const line of ['EW', 'NS']) if(this.lineLabelState !== JSON.stringify(this.visibleLines)){
       for(const it of this.stationLabels[line]) it.want = this.visibleLines[line] && (zoom !== 'far' || it.major);

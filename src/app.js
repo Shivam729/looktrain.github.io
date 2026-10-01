@@ -274,7 +274,7 @@ function renderCard(T){
   if(st && st.kind === 'moving'){
     const n = st.next, dest = st.trip.rows[st.trip.rows.length - 1];
     next.innerHTML = `<div><label>Next</label><strong>${esc(n.name)}</strong><span>${n.est ? '~' : ''}${hms(n.t)}</span></div>
-      <div class="cd"><label>Arrives in</label><strong>${inText(n.t - T)}</strong><span>to ${esc(dest.name)} ${hms(dest.t, false)}</span></div>`;
+      <div class="cd"><label>Arrives in</label><strong>${inText(n.t - T)}</strong><span>${withdrawText(rec, line)}</span></div>`;
   } else if(st){
     next.innerHTML = `<div class="wide"><label>${st.kind === 'layover' ? 'Next departure' : st.kind === 'before' ? 'Launch' : 'Done for the day'}</label><strong>${esc(st.sub)}</strong></div>`;
   } else next.innerHTML = '';
@@ -293,6 +293,15 @@ function renderCard(T){
   if(S.tab === 'stops' && st && st.trip){
     $('#cBody').querySelectorAll('tr[data-t]').forEach(tr => tr.classList.toggle('past', +tr.dataset.t < T && !tr.classList.contains('here')));
   }
+}
+
+// "Withdraws to ECID 23:45" from the launch/withdraw tables (falls back to the trip's end).
+function withdrawText(rec, line){
+  const W = rec && rec.withdraw;
+  if(!W) return '';
+  const tt = tableTime(W.time);
+  const depot = W.depot === 'Outstable' ? 'stabling' : W.depot;
+  return `Withdraws to <b class="${line === 'EW' && W.depot === 'ECID' ? 'ecid' : ''}">${esc(depot)}</b> ${tt.time.slice(0, 5)}${tt.nextDay ? ' +1' : ''}`;
 }
 
 function stopsTable(trip, st, T, fold = false){
@@ -449,23 +458,7 @@ addEventListener('resize', updateInsets);
   grab.addEventListener('pointercancel', end);
 }
 
-// specular highlight that follows the pointer: only the glass panel under it, at most once per frame
-{
-  let q = null;
-  addEventListener('pointermove', e => {
-    if(e.pointerType !== 'mouse') return;
-    const first = !q; q = { x: e.clientX, y: e.clientY, t: e.target };
-    if(!first) return;
-    requestAnimationFrame(() => {
-      const { x, y, t } = q; q = null;
-      const g = t && t.closest && t.closest('.glass');
-      if(!g) return;
-      const r = g.getBoundingClientRect();
-      g.style.setProperty('--mx', (x - r.left) + 'px');
-      g.style.setProperty('--my', (y - r.top) + 'px');
-    });
-  }, { passive: true });
-}
+
 addEventListener('resize', () => { document.querySelectorAll('.seg').forEach(moveLens); });
 
 let toastT;
